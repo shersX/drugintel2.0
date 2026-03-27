@@ -1,0 +1,38 @@
+# 定义服务（这里只需要 PostgreSQL 数据库服务）
+services:
+  # 服务名称：drugintel-db（可自定义，比如 drugintel-db）
+  drugintel-db:
+    # 使用你已拉取的 postgres 镜像（默认 latest 版本，若需指定版本可改为 postgres:16）
+    image: pgvector/pgvector:pg16
+    # 容器名称（固定后方便管理，比如 docker stop drugintel-db）
+    container_name: drugintel-db
+    # 端口映射：宿主机 5432 端口 → 容器内 5432 端口（外部通过 localhost:5432 连接）
+    ports:
+      - "5433:5432"
+    # 环境变量：配置数据库核心参数（必填！）
+    environment:
+      # PostgreSQL 超级用户密码（替换成你自己的密码，比如 '123456'）
+      POSTGRES_PASSWORD: 'password'
+      # 自动创建的默认数据库名（和你项目对应，比如 'drugintel'）
+      POSTGRES_DB: 'drugintel'
+      # 默认超级用户名（可选，默认就是 postgres，可省略）
+      POSTGRES_USER: 'user'
+      # 数据库编码（避免中文乱码，建议添加）
+      PGDATA: '/var/lib/postgresql/data/pgdata'
+      LANG: 'en_US.UTF-8'
+    # 数据持久化：将数据库数据存储到 Docker 数据卷（容器删除数据不丢）
+    volumes:
+      # 左侧 pgdata 是数据卷名称（Docker 自动创建），右侧是容器内数据存储路径
+      - pgdata:/var/lib/postgresql/data
+    # 容器异常退出时自动重启（确保服务稳定性）
+    restart: always
+    # 健康检查：确认数据库是否正常启动（避免项目连接时数据库未就绪）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]
+      interval: 10s  # 每 10 秒检查一次
+      timeout: 5s    # 检查超时时间
+      retries: 5     # 重试 5 次失败则认为容器不健康
+
+# 定义数据卷（单独声明，确保数据卷持久化，不受容器删除影响）
+volumes:
+  pgdata:
