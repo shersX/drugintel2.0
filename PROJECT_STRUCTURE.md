@@ -55,7 +55,6 @@ backend/
 │   │   ├── bioon.py              # Bioon爬虫
 │   │   ├── globenewswire.py      # GlobeNewswire爬虫
 │   │   ├── prnewswire.py         # PRNewswire爬虫
-│   │   ├── businesswire.py       # BusinessWire爬虫
 │   │   └── registry.py           # 爬虫注册表
 │   │
 │   ├── processors/               # 数据处理模块
