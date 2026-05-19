@@ -5,11 +5,12 @@ import asyncio
 from typing import Dict, List
 
 from backend.src.crawlers.registry import CRAWLER_REGISTRY, run_all_crawlers
+import json
 
 
 DEFAULT_PAGE_COUNT = 2
 DEFAULT_FETCH_DETAILS = True
-DEFAULT_CONCURRENCY = 3
+DEFAULT_CONCURRENCY = 2
 
 
 async def run_registry_crawlers() -> Dict[str, List[Dict]]:
@@ -22,8 +23,11 @@ async def run_registry_crawlers() -> Dict[str, List[Dict]]:
     )
 
 
-def main() -> None:
+def main():
     results = asyncio.run(run_registry_crawlers())
+    #1.将results写入outjson/results.json
+    with open("outjson/results.json", "w") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     main()

@@ -6,7 +6,7 @@ services:
     image: pgvector/pgvector:pg16
     # 容器名称（固定后方便管理，比如 docker stop drugintel-db）
     container_name: drugintel-db
-    # 端口映射：宿主机 5432 端口 → 容器内 5432 端口（外部通过 localhost:5432 连接）
+    # 端口映射：宿主机 5433 端口 → 容器内 5432 端口（外部通过 localhost:5433 连接）
     ports:
       - "5433:5432"
     # 环境变量：配置数据库核心参数（必填！）
@@ -20,19 +20,14 @@ services:
       # 数据库编码（避免中文乱码，建议添加）
       PGDATA: '/var/lib/postgresql/data/pgdata'
       LANG: 'en_US.UTF-8'
-    # 数据持久化：将数据库数据存储到 Docker 数据卷（容器删除数据不丢）
+    # 数据持久化：与 AICIS 一致，绑定到项目目录下的 volumes（可用环境变量 DOCKER_VOLUME_DIRECTORY 覆盖根路径）
     volumes:
-      # 左侧 pgdata 是数据卷名称（Docker 自动创建），右侧是容器内数据存储路径
-      - pgdata:/var/lib/postgresql/data
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/postgres:/var/lib/postgresql/data
     # 容器异常退出时自动重启（确保服务稳定性）
     restart: always
     # 健康检查：确认数据库是否正常启动（避免项目连接时数据库未就绪）
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]
-      interval: 10s  # 每 10 秒检查一次
+      interval: 150s  # 每 150 秒检查一次
       timeout: 5s    # 检查超时时间
       retries: 5     # 重试 5 次失败则认为容器不健康
-
-# 定义数据卷（单独声明，确保数据卷持久化，不受容器删除影响）
-volumes:
-  pgdata:

@@ -19,11 +19,12 @@ from backend.src.crawlers.prnewswire import crawl_prnewswire_async
 logger = get_logger("crawler.registry")
 MAX_RETRY_ATTEMPTS = 3
 USER_AGENT_POOL = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_7_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:137.0) Gecko/20100101 Firefox/137.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
 ]
 
 
@@ -43,7 +44,7 @@ CRAWLER_REGISTRY = {
         "enabled": True,  # 是否启用该爬虫
         "page_count": 1,
         "fetch_details": True,
-        "concurrency": 3,
+        "concurrency": 2,
     },
     "globenewswire": {
         "name": "GlobeNewswire新闻",
@@ -51,7 +52,7 @@ CRAWLER_REGISTRY = {
         "enabled": True,
         "page_count": 1,
         "fetch_details": True,
-        "concurrency": 3,
+        "concurrency": 2,
     },
     "prnewswire":{
         "name": "PrNewswire新闻",
@@ -59,10 +60,38 @@ CRAWLER_REGISTRY = {
         "enabled": True,
         "page_count": 1,
         "fetch_details": True,
-        "concurrency": 3,
+        "concurrency": 2,
     }
 }
 
+async def _run_crawler_with_retry(crawler_key: str,crawler_func: Callable,kwargs: Dict,) -> Tuple[List[Dict], Optional[Exception]]:
+    """
+    统一重试执行器：所有异常都重试，最多 3 次。
+    """
+    last_exception: Optional[Exception] = None
+    last_user_agent: Optional[str] = None
+    for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
+        try:
+            current_kwargs = dict(kwargs)
+            current_user_agent = _pick_rotating_user_agent(last_user_agent)
+            current_kwargs["user_agent"] = current_user_agent
+            last_user_agent = current_user_agent
+            if attempt > 1:
+                logger.warning("爬虫 %s 开始第 %s/%s 次尝试",crawler_key,attempt,MAX_RETRY_ATTEMPTS)
+            logger.info("爬虫 %s 使用 User-Agent: %s", crawler_key, current_user_agent)
+            result = await crawler_func(**current_kwargs)
+            if attempt > 1:
+                logger.info("爬虫 %s 在第 %s 次尝试成功", crawler_key, attempt)
+            return result or [], None
+        except Exception as exc:
+            last_exception = exc
+            logger.error("爬虫 %s 第 %s/%s 次执行失败: %s",crawler_key,attempt,MAX_RETRY_ATTEMPTS,str(exc),)
+            logger.error("异常类型: %s", type(exc).__name__)
+            if attempt < MAX_RETRY_ATTEMPTS:
+                delay_seconds = 2 ** (attempt - 1)
+                logger.warning("爬虫 %s 将在 %s 秒后重试", crawler_key, delay_seconds)
+                await asyncio.sleep(delay_seconds)
+    return [], last_exception
 
 async def run_all_crawlers(
     crawler_configs: Optional[Dict] = None,
@@ -95,50 +124,6 @@ async def run_all_crawlers(
     if not enabled_crawlers:
         logger.warning("没有启用的爬虫")
         return {}
-
-    async def _run_crawler_with_retry(
-        crawler_key: str,
-        crawler_func: Callable,
-        kwargs: Dict,
-    ) -> Tuple[List[Dict], Optional[Exception]]:
-        """
-        统一重试执行器：所有异常都重试，最多 3 次。
-        """
-        last_exception: Optional[Exception] = None
-        last_user_agent: Optional[str] = None
-        for attempt in range(1, MAX_RETRY_ATTEMPTS + 1):
-            try:
-                current_kwargs = dict(kwargs)
-                current_user_agent = _pick_rotating_user_agent(last_user_agent)
-                current_kwargs["user_agent"] = current_user_agent
-                last_user_agent = current_user_agent
-                if attempt > 1:
-                    logger.warning(
-                        "爬虫 %s 开始第 %s/%s 次尝试",
-                        crawler_key,
-                        attempt,
-                        MAX_RETRY_ATTEMPTS,
-                    )
-                logger.info("爬虫 %s 使用 User-Agent: %s", crawler_key, current_user_agent)
-                result = await crawler_func(**current_kwargs)
-                if attempt > 1:
-                    logger.info("爬虫 %s 在第 %s 次尝试成功", crawler_key, attempt)
-                return result or [], None
-            except Exception as exc:
-                last_exception = exc
-                logger.error(
-                    "爬虫 %s 第 %s/%s 次执行失败: %s",
-                    crawler_key,
-                    attempt,
-                    MAX_RETRY_ATTEMPTS,
-                    str(exc),
-                )
-                logger.error("异常类型: %s", type(exc).__name__)
-                if attempt < MAX_RETRY_ATTEMPTS:
-                    delay_seconds = 2 ** (attempt - 1)
-                    logger.warning("爬虫 %s 将在 %s 秒后重试", crawler_key, delay_seconds)
-                    await asyncio.sleep(delay_seconds)
-        return [], last_exception
     
     logger.info("%s", "=" * 80)
     logger.info("开始并发运行 %s 个爬虫", len(enabled_crawlers))
@@ -171,7 +156,7 @@ async def run_all_crawlers(
         task = _run_crawler_with_retry(
             crawler_key=name,
             crawler_func=crawler_func,
-            kwargs=task_kwargs,
+            kwargs=task_kwargs
         )
         tasks.append(task)
         crawler_names.append(name)
@@ -202,11 +187,7 @@ async def run_all_crawlers(
             if error is not None:
                 error_msg = str(error)
                 failed_crawlers[name] = f"{type(error).__name__}: {error_msg}"
-                logger.error(
-                    "爬虫 %s 重试 %s 次后仍失败",
-                    name,
-                    MAX_RETRY_ATTEMPTS,
-                )
+                logger.error("爬虫 %s 重试 %s 次后仍失败",name,MAX_RETRY_ATTEMPTS)
                 crawler_results[name] = []
             else:
                 news_count = len(crawler_data) if crawler_data else 0
@@ -217,11 +198,7 @@ async def run_all_crawlers(
     elapsed = (end_time - start_time).total_seconds()
     logger.info("%s", "=" * 80)
     if failed_crawlers:
-        logger.warning(
-            "爬虫执行结束（部分失败） 成功=%s 失败=%s",
-            len(enabled_crawlers) - len(failed_crawlers),
-            len(failed_crawlers),
-        )
+        logger.warning("爬虫执行结束（部分失败） 成功=%s 失败=%s",len(enabled_crawlers) - len(failed_crawlers),len(failed_crawlers))
         logger.warning("失败爬虫列表: %s", ", ".join(sorted(failed_crawlers.keys())))
         for crawler_name, failure in failed_crawlers.items():
             logger.warning("失败详情 %s: %s", crawler_name, failure)

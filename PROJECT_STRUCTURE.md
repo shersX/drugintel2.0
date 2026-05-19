@@ -233,10 +233,11 @@ frontend/
 
 ```
 config/
-├── keywords.py                   # 关键词配置
+├── keywords.yaml                 # 关键词配置（靶点/公司/适应症/药物等）
 └── prompts/                      # 提示词配置
     ├── summary.txt               # 摘要生成提示词
-    ├── intent.txt                # 意图识别提示词
+    ├── relevance.txt             # 新闻医药相关性判断（数据处理流水线 / LLM）
+    ├── intent.txt                # 意图识别提示词（RAG/对话）
     └── system.txt                # 系统提示词
 ```
 

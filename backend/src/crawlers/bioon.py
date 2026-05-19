@@ -189,8 +189,8 @@ class BioonNewsCrawler(BaseAsyncCrawler):
                 logger.warning("未找到详情页内容区域: %s", detail_url)
             
             import random
-            base_delay=0.3
-            random_delay=random.uniform(0.1,0.3)
+            base_delay=1
+            random_delay=random.uniform(0.5,2.3)
             await asyncio.sleep(base_delay+random_delay)  # 避免单站压力过大
             
         except aiohttp.ClientError as e:
@@ -227,7 +227,7 @@ class BioonNewsCrawler(BaseAsyncCrawler):
     
     def save_to_json(self, news_list: List[Dict], filename: str =f"outjson/{crawler_name}.json"):
         """
-        将新闻数据保存为JSON文件
+        临时将新闻数据保存为JSON文件
         
         Args:
             news_list: 新闻数据列表
@@ -243,7 +243,7 @@ class BioonNewsCrawler(BaseAsyncCrawler):
     
     def print_news_list(self, news_list: List[Dict]):
         """
-        打印新闻列表
+        临时打印新闻列表
         
         Args:
             news_list: 新闻数据列表
@@ -255,14 +255,8 @@ class BioonNewsCrawler(BaseAsyncCrawler):
         for i, news in enumerate(news_list, 1):
             logger.info("%s. 标题: %s", i, news.get('title', ''))
             logger.info("   日期: %s", news.get('publish_time', ''))
-            logger.info(
-                "   简介: %s",
-                f"{news.get('description', '')[:100]}..." if len(news.get('description', '')) > 100 else news.get('description', ''),
-            )
-            logger.info(
-                "   正文: %s",
-                f"{news.get('full_text', '')[:100]}..." if len(news.get('full_text', '')) > 100 else news.get('full_text', ''),
-            )
+            logger.info("   简介: %s",f"{news.get('description', '')[:100]}..." if len(news.get('description', '')) > 100 else news.get('description', ''))
+            logger.info("   正文: %s",f"{news.get('full_text', '')[:100]}..." if len(news.get('full_text', '')) > 100 else news.get('full_text', ''))
             logger.info("   详细URL: %s", news.get('detail_url', ''))
             logger.info("   %s", "-" * 70)
         
@@ -299,12 +293,7 @@ async def crawl_bioon_news_async(
     async with aiohttp.ClientSession(headers=crawler.headers) as session:
         raw_news_list: List[Dict] = await crawler.fetch_news_list(session, page_count=page_count)
         new_news_list = crawler.filter_new_items(raw_news_list, visited_urls)
-        logger.info(
-            "增量过滤完成 原始=%s 过滤=%s 新增=%s",
-            len(raw_news_list),
-            len(raw_news_list) - len(new_news_list),
-            len(new_news_list),
-        )
+        logger.info( "增量过滤完成 原始=%s 过滤=%s 新增=%s",len(raw_news_list),len(raw_news_list) - len(new_news_list),len(new_news_list),)
 
         if not raw_news_list:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
