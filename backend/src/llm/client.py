@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 
 from backend.src.core.config import LLMEnvConfig
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 
 logger = get_logger("llm.client")
 

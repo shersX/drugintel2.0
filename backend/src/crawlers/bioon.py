@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 import re
 import aiohttp
 from bs4 import BeautifulSoup
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 from backend.src.crawlers.base_async_crawler import BaseAsyncCrawler
 
 crawler_name="BioonNews"
@@ -189,7 +189,7 @@ class BioonNewsCrawler(BaseAsyncCrawler):
                 logger.warning("未找到详情页内容区域: %s", detail_url)
             
             import random
-            base_delay=1
+            base_delay=3
             random_delay=random.uniform(0.5,2.3)
             await asyncio.sleep(base_delay+random_delay)  # 避免单站压力过大
             

@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from typing import List, Dict, Optional
 import aiohttp
 from bs4 import BeautifulSoup
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 from backend.src.crawlers.base_async_crawler import BaseAsyncCrawler
 
 crawler_name="Prnewswire"

@@ -9,7 +9,7 @@ import asyncio
 import json
 import os
 from typing import Dict, List, Set, Callable, Awaitable, Optional
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 
 
 class BaseAsyncCrawler:

@@ -12,8 +12,6 @@ YAML 约定：
 仅做少量 findall，避免对数千词条逐条 re.search。
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -47,12 +45,7 @@ def _is_mixed_cjk_latin(term: str) -> bool:
     return bool(_HAS_CJK_RE.search(term))
 
 
-def _compile_alternation_pattern(
-    terms: Sequence[str],
-    *,
-    prefix: str,
-    suffix: str,
-) -> Optional[re.Pattern[str]]:
+def _compile_alternation_pattern(terms: Sequence[str],*,prefix: str,suffix: str) -> Optional[re.Pattern[str]]:
     """将全部词条编译为单个预编译正则（长词在前）。"""
     if not terms:
         return None
@@ -61,9 +54,7 @@ def _compile_alternation_pattern(
     return re.compile(f"{prefix}(?:{body}){suffix}")
 
 
-def _collect_terms_from_map(
-    keyword_map: Mapping[str, Sequence[str]],
-) -> Tuple[Dict[str, str], List[str], List[str], List[str]]:
+def _collect_terms_from_map(keyword_map: Mapping[str, Sequence[str]],) -> Tuple[Dict[str, str], List[str], List[str], List[str]]:
     """构建 term→canonical，并分出纯中文 / 拉丁 / 中英混合三类词条。"""
     term_to_canonical: Dict[str, str] = {}
     cjk_terms: List[str] = []
@@ -180,9 +171,7 @@ class KeywordMatcher:
     keyword_map: Mapping[str, Sequence[str]]
 
     def __post_init__(self) -> None:
-        term_to_canonical, cjk_terms, latin_terms, mixed_terms = _collect_terms_from_map(
-            self.keyword_map
-        )
+        term_to_canonical, cjk_terms, latin_terms, mixed_terms = _collect_terms_from_map(self.keyword_map)
         cjk_pattern = _compile_alternation_pattern(cjk_terms, prefix="", suffix="")
         latin_pattern = _compile_alternation_pattern(
             latin_terms, prefix=r"(?<!\w)", suffix=r"(?!\w)"
@@ -242,11 +231,7 @@ def _combined_news_text(item: MutableMapping) -> str:
     return f"{title} {full_text}".strip()
 
 
-def _annotate_matches(
-    item: MutableMapping,
-    matched: List[str],
-    category_by_canonical: Mapping[str, str],
-) -> None:
+def _annotate_matches(item: MutableMapping,matched: List[str],category_by_canonical: Mapping[str, str]) -> None:
     by_category: Dict[str, List[str]] = {key: [] for key in _CATEGORY_KEYS}
     for canonical in matched:
         category = category_by_canonical.get(canonical, "")

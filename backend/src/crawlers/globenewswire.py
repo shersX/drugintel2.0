@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 import os
 
 from typing import List, Dict, Optional
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 
 crawler_name="Globenewswire"
 logger = get_logger("globenewswire")

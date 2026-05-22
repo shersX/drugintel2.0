@@ -9,7 +9,7 @@ import asyncio
 import random
 from typing import List, Dict, Callable, Optional, Tuple
 from datetime import datetime
-from backend.src.core.logging import get_logger
+from backend.src.core.logger import get_logger
 
 # 导入所有爬虫模块
 from backend.src.crawlers.bioon import crawl_bioon_news_async
