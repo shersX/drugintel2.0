@@ -20,7 +20,7 @@ class LLMEnvConfig:
             api_key=os.getenv("SILICONFLOW_API_KEY", "").strip(),
             base_url=os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1").strip().rstrip("/"),
             model=os.getenv("SILICONFLOW_MODEL", "deepseek-ai/DeepSeek-V4-Flash"),
-            timeout_sec=float(os.getenv("LLM_TIMEOUT_SEC", "180")),
+            timeout_sec=float(os.getenv("LLM_TIMEOUT_SEC", "90")),
             max_retries=int(os.getenv("LLM_MAX_RETRIES", "3")),
         )
 

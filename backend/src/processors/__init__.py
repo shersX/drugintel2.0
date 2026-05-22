@@ -7,19 +7,13 @@ from backend.src.processors.filter import (
     load_keywords_config,
 )
 from backend.src.processors.relevance import (
-    annotate_relevance_for_items,
-    check_relevance,
-    check_relevance_async,
-    parse_relevance_reply,
+    isrelated_for_item,
 )
 
 __all__ = [
-    "annotate_relevance_for_items",
-    "check_relevance",
-    "check_relevance_async",
     "filter_news_items",
     "filter_results_by_keywords",
     "load_keyword_lexicon",
     "load_keywords_config",
-    "parse_relevance_reply",
+    "isrelated_for_item",
 ]

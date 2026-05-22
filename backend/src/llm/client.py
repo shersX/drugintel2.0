@@ -12,12 +12,15 @@ from backend.src.core.logger import get_logger
 logger = get_logger("llm.client")
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_DEFAULT_MAX_CONCURRENCY = 5
 
 
 class SiliconFlowClient:
     """调用 SiliconFlow `/v1/chat/completions`。"""
 
-    def __init__(self,*,api_key: str,base_url: str,model: str,timeout_sec: float = 60.0,max_retries: int = 3):
+    _semaphore: Optional[asyncio.Semaphore] = None
+
+    def __init__(self,*,api_key: str,base_url: str,model: str,timeout_sec: float = 90.0,max_retries: int = 3,max_concurrency: int = _DEFAULT_MAX_CONCURRENCY):
         if not api_key:
             raise ValueError("SILICONFLOW_API_KEY 未设置，无法调用 LLM")
         self._api_key = api_key
@@ -25,6 +28,8 @@ class SiliconFlowClient:
         self._model = model
         self._timeout_sec = timeout_sec
         self._max_retries = max(1, max_retries)
+        if SiliconFlowClient._semaphore is None:
+            SiliconFlowClient._semaphore = asyncio.Semaphore(max(1, max_concurrency))
 
     @classmethod
     def from_env(cls):
@@ -37,11 +42,16 @@ class SiliconFlowClient:
             max_retries=cfg.max_retries,
         )
 
-    async def chat_completion(self,messages: List[Dict[str, str]]):
+    async def chat_completion(self, messages: List[Dict[str, str]]):
+        assert self._semaphore is not None
+        async with self._semaphore:
+            return await self._chat_completion_unlocked(messages)
+
+    async def _chat_completion_unlocked(self, messages: List[Dict[str, str]]):
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
             "model": self._model,
-            "messages": messages
+            "messages": messages,
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -71,9 +81,11 @@ class SiliconFlowClient:
                 raise
             except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
                 last_exc = e
-                logger.warning("LLM 调用失败 attempt=%s/%s: %s",attempt,self._max_retries,e)
+                logger.warning(
+                    "LLM 调用失败 attempt=%s/%s: %s", attempt, self._max_retries, e
+                )
                 if attempt < self._max_retries:
-                    await asyncio.sleep(2 ** (attempt - 1))
+                    await asyncio.sleep(4 ** attempt )
                 else:
                     raise
 
