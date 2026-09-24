@@ -1,0 +1,78 @@
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --text: #e8eef7;
+  --muted: #8b9bb4;
+  --accent: #3d9cf0;
+  --line: #2a3748;
+  --ok: #3ecf8e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(1200px 600px at 10% -10%, #1c2a40, var(--bg));
+  color: var(--text);
+}
+a { color: var(--accent); text-decoration: none; }
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.nav {
+  background: rgba(26, 35, 50, 0.95);
+  border-right: 1px solid var(--line);
+  padding: 24px 16px;
+}
+.nav h1 { font-size: 18px; margin: 0 0 20px; letter-spacing: 0.04em; }
+.nav a {
+  display: block;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.nav a.router-link-active, .nav a:hover {
+  background: #243247;
+  color: var(--text);
+}
+.main { padding: 28px; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.stat .label { color: var(--muted); font-size: 13px; }
+.stat .value { font-size: 28px; margin-top: 6px; font-weight: 650; }
+.list-item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.list-item:last-child { border-bottom: none; }
+.meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+input, textarea, select, button {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #121a26;
+  color: var(--text);
+  padding: 10px 12px;
+}
+button {
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+button.secondary { background: #2b3b52; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.chat-box {
+  min-height: 220px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  .nav { display: flex; gap: 8px; overflow-x: auto; align-items: center; }
+  .nav h1 { margin: 0 12px 0 0; white-space: nowrap; }
+  .nav a { white-space: nowrap; }
+}

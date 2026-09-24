@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>DrugIntel 告警</title>
+</head>
+<body style="font-family: sans-serif; line-height: 1.6; color: #222;">
+  <h2>订阅命中：{{ entity_name }}</h2>
+  <p><strong>标题：</strong>{{ title }}</p>
+  <p><strong>来源：</strong>{{ source }}</p>
+  <p><strong>时间：</strong>{{ publish_time }}</p>
+  <p><strong>摘要：</strong>{{ abstract }}</p>
+  {% if detail_url %}
+  <p><a href="{{ detail_url }}">查看原文</a></p>
+  {% endif %}
+  <hr />
+  <p style="color:#666;font-size:12px;">此邮件由 DrugIntel.ai 自动发送</p>
+</body>
+</html>

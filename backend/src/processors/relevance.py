@@ -9,6 +9,9 @@ from backend.src.llm.client import SiliconFlowClient
 
 logger = get_logger("processors.relevance")
 
+# 扁平化后通过 item["crawler"] 识别来源；以下爬虫跳过 LLM 相关性，默认视为合格
+SKIP_RELEVANCE_CRAWLERS = frozenset({"bioon"})
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_RELEVANCE_PROMPT_PATH = PROJECT_ROOT / "config" / "prompts" / "relevance.txt"
 
@@ -24,6 +27,11 @@ def _relevance_prompt_text(prompt_path: Optional[str] = None) -> str:
         return Path(prompt_path).read_text(encoding="utf-8")
     return _default_relevance_prompt()
 
+def _should_skip_relevance(item: Mapping) -> bool:
+    crawler = (item.get("crawler") or "").strip().lower()
+    return crawler in SKIP_RELEVANCE_CRAWLERS
+
+
 async def isrelated_for_item(items):
     """
     利用大模型判断文本是否与医药行业相关。
@@ -32,18 +40,36 @@ async def isrelated_for_item(items):
     1. 相关：文本与医药行业相关（保留该新闻）
     2. 不相关：文本与医药行业不相关（去除该新闻）
     3. LLM 调用失败（超时、网络、接口错误等）：保守当作相关，保留该新闻
+    4. crawler 在 SKIP_RELEVANCE_CRAWLERS 中（如 bioon）：跳过 LLM，默认保留
 
     Args:
-        items: 要判断的新闻项，包含 full_text 等字段
+        items: 要判断的新闻项，需含 crawler、title、full_text 等字段（扁平化列表）
     Returns:
         判定为相关或 LLM 失败而保留的新闻项列表
     """
+    skipped: list = []
+    to_check: list = []
+    for item in items or []:
+        if _should_skip_relevance(item):
+            skipped.append(item)
+        else:
+            to_check.append(item)
+
+    if skipped:
+        logger.info(
+            "跳过 LLM 相关性判定 crawler=%s 条数=%s",
+            ",".join(sorted(SKIP_RELEVANCE_CRAWLERS)),
+            len(skipped),
+        )
+
+    if not to_check:
+        return skipped
 
     llm = SiliconFlowClient.from_env()
-    tasks = [asyncio.create_task(check_single_relevance_async(item, llm)) for item in items]
-    results=await asyncio.gather(*tasks)
-    related_items=[item for item in results if item is not None]
-    return related_items
+    tasks = [asyncio.create_task(check_single_relevance_async(item, llm)) for item in to_check]
+    results = await asyncio.gather(*tasks)
+    related_items = [item for item in results if item is not None]
+    return skipped + related_items
 
 
 async def check_single_relevance_async(item, llm: SiliconFlowClient):

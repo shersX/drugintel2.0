@@ -15,5 +15,5 @@ wheels/
 
 # Output files
 outjson/
-tests/
 .env
+volumes/

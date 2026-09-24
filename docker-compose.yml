@@ -1,33 +1,31 @@
-# 定义服务（这里只需要 PostgreSQL 数据库服务）
+# PostgreSQL + pgvector + Redis
+# Windows 请用 127.0.0.1 连接；数据目录必须在 Linux 文件系统（不可 /mnt/d）
 services:
-  # 服务名称：drugintel-db（可自定义，比如 drugintel-db）
   drugintel-db:
-    # 使用你已拉取的 postgres 镜像（默认 latest 版本，若需指定版本可改为 postgres:16）
     image: pgvector/pgvector:pg16
-    # 容器名称（固定后方便管理，比如 docker stop drugintel-db）
     container_name: drugintel-db
-    # 端口映射：宿主机 5433 端口 → 容器内 5432 端口（外部通过 localhost:5433 连接）
     ports:
       - "5433:5432"
-    # 环境变量：配置数据库核心参数（必填！）
     environment:
-      # PostgreSQL 超级用户密码（替换成你自己的密码，比如 '123456'）
-      POSTGRES_PASSWORD: 'password'
-      # 自动创建的默认数据库名（和你项目对应，比如 'drugintel'）
-      POSTGRES_DB: 'drugintel'
-      # 默认超级用户名（可选，默认就是 postgres，可省略）
-      POSTGRES_USER: 'user'
-      # 数据库编码（避免中文乱码，建议添加）
-      PGDATA: '/var/lib/postgresql/data/pgdata'
-      LANG: 'en_US.UTF-8'
-    # 数据持久化：与 AICIS 一致，绑定到项目目录下的 volumes（可用环境变量 DOCKER_VOLUME_DIRECTORY 覆盖根路径）
+      POSTGRES_PASSWORD: "password"
+      POSTGRES_DB: "drugintel"
+      POSTGRES_USER: "user"
+      LANG: "en_US.UTF-8"
     volumes:
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/postgres:/var/lib/postgresql/data
-    # 容器异常退出时自动重启（确保服务稳定性）
-    restart: always
-    # 健康检查：确认数据库是否正常启动（避免项目连接时数据库未就绪）
+      - ${PGDATA_HOST_PATH:-/home/yj250019/drugintel-pgdata}:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]
-      interval: 150s  # 每 150 秒检查一次
-      timeout: 5s    # 检查超时时间
-      retries: 5     # 重试 5 次失败则认为容器不健康
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  drugintel-redis:
+    image: redis:7-alpine
+    container_name: drugintel-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # API 建议在宿主机用 uv run 启动以便使用本地 .env；如需容器化可自行扩展 Dockerfile

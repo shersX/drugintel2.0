@@ -45,13 +45,21 @@ class SiliconFlowClient:
     async def chat_completion(self, messages: List[Dict[str, str]]):
         assert self._semaphore is not None
         async with self._semaphore:
-            return await self._chat_completion_unlocked(messages)
+            return await self._chat_completion_unlocked(messages, stream=False)
 
-    async def _chat_completion_unlocked(self, messages: List[Dict[str, str]]):
+    async def chat_completion_stream(self, messages: List[Dict[str, str]]):
+        """异步生成器：逐段产出 content delta。"""
+        assert self._semaphore is not None
+        async with self._semaphore:
+            async for chunk in self._chat_completion_stream_unlocked(messages):
+                yield chunk
+
+    async def _chat_completion_unlocked(self, messages: List[Dict[str, str]], *, stream: bool = False):
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
             "model": self._model,
             "messages": messages,
+            "stream": False,
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -85,7 +93,7 @@ class SiliconFlowClient:
                     "LLM 调用失败 attempt=%s/%s: %s", attempt, self._max_retries, e
                 )
                 if attempt < self._max_retries:
-                    await asyncio.sleep(4 ** attempt )
+                    await asyncio.sleep(4 ** attempt)
                 else:
                     raise
 
@@ -93,6 +101,57 @@ class SiliconFlowClient:
             raise last_exc
         return ""
 
+    async def _chat_completion_stream_unlocked(self, messages: List[Dict[str, str]]):
+        url = f"{self._base_url}/chat/completions"
+        payload: Dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        timeout = aiohttp.ClientTimeout(total=self._timeout_sec)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise aiohttp.ClientResponseError(
+                        resp.request_info,
+                        resp.history,
+                        status=resp.status,
+                        message=text[:300],
+                    )
+                async for raw in resp.content:
+                    line = raw.decode("utf-8", errors="ignore").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = data.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    piece = delta.get("content")
+                    if piece:
+                        yield piece
+
+
 if __name__ == "__main__":
     client = SiliconFlowClient.from_env()
-    print(asyncio.run(client.chat_completion([{"role": "system", "content": "你是一个数学老师，只回答数学问题"}, {"role": "user", "content": "9.8-9.11=？"}])))
+    print(
+        asyncio.run(
+            client.chat_completion(
+                [
+                    {"role": "system", "content": "你是一个数学老师，只回答数学问题"},
+                    {"role": "user", "content": "9.8-9.11=？"},
+                ]
+            )
+        )
+    )
