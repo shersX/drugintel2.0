@@ -1,11 +1,21 @@
 const BASE = ''
 
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  })
-  const data = await res.json()
+  let res
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    })
+  } catch {
+    throw new Error('无法连接后端服务，请确认 API 已在 :8000 启动')
+  }
+  let data
+  try {
+    data = await res.json()
+  } catch {
+    throw new Error(res.status === 500 ? '后端响应异常（请检查服务与数据库连接）' : `服务异常（HTTP ${res.status}）`)
+  }
   if (!res.ok || data.code !== 0) {
     throw new Error(data.message || `HTTP ${res.status}`)
   }

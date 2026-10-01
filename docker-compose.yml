@@ -1,7 +1,6 @@
-# PostgreSQL + pgvector + Redis
-# Windows 请用 127.0.0.1 连接；数据目录必须在 Linux 文件系统（不可 /mnt/d）
+# DrugIntel.ai 一键部署编排
 services:
-  drugintel-db:
+  db:
     image: pgvector/pgvector:pg16
     container_name: drugintel-db
     ports:
@@ -12,7 +11,7 @@ services:
       POSTGRES_USER: "user"
       LANG: "en_US.UTF-8"
     volumes:
-      - ${PGDATA_HOST_PATH:-/home/yj250019/drugintel-pgdata}:/var/lib/postgresql/data
+      - ./data/pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]
@@ -21,11 +20,27 @@ services:
       retries: 5
       start_period: 15s
 
-  drugintel-redis:
+  redis:
     image: redis:7-alpine
     container_name: drugintel-redis
     ports:
       - "6379:6379"
     restart: unless-stopped
 
-  # API 建议在宿主机用 uv run 启动以便使用本地 .env；如需容器化可自行扩展 Dockerfile
+  app:
+    build: .
+    container_name: drugintel-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
