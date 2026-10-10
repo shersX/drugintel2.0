@@ -36,8 +36,16 @@ uv run python main.py --cluster-only
 
 ## 4. 启动 API
 
+本地（本机可用 uv）：
+
 ```bash
 uv run uvicorn backend.src.api.app:app --host 0.0.0.0 --port 8000
+```
+
+或 Docker 一键（镜像内用 pip + `requirements.txt`，不依赖 uv / ghcr.io）：
+
+```bash
+docker compose up -d --build
 ```
 
 Swagger：http://127.0.0.1:8000/docs
