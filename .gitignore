@@ -17,3 +17,4 @@ wheels/
 outjson/
 .env
 volumes/
+data/
