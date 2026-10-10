@@ -11,8 +11,7 @@ services:
       POSTGRES_USER: "user"
       LANG: "en_US.UTF-8"
     volumes:
-      # 数据在项目 volumes/postgresql。/mnt/d 不保留属主，需先 bind metadata 挂载（/etc/fstab）。
-      - ./volumes/postgresql:/var/lib/postgresql/data
+      - ./data/pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]
