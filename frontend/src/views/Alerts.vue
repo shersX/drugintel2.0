@@ -88,7 +88,6 @@ import { useAsync } from '../composables'
 const items = ref([])
 const { loading, error, run } = useAsync()
 const form = reactive({
-  user_id: 1,
   entity_type: 'keyword',
   entity_name: '',
   email: '',

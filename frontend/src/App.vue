@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <header class="masthead">
+    <header v-if="!isLogin" class="masthead">
       <div class="masthead-inner">
         <div class="mast-top">
           <router-link to="/" class="mast-brand">
@@ -10,9 +10,15 @@
             </svg>
             DrugIntel<span style="color: var(--moss)">.ai</span>
           </router-link>
-          <span class="mast-date">Vol. {{ issue }} · {{ today }}</span>
+          <span class="mast-side">
+            <template v-if="session.user">
+              <router-link to="/account" class="who">{{ session.user.display_name }}</router-link>
+              <button type="button" class="ghost" @click="logout">退出</button>
+            </template>
+            <span v-else class="mast-date">Vol. {{ issue }} · {{ today }}</span>
+          </span>
         </div>
-        <nav class="mast-nav">
+        <nav v-if="session.user" class="mast-nav">
           <router-link
             v-for="item in navItems"
             :key="item.to"
@@ -23,7 +29,7 @@
       </div>
     </header>
 
-    <main class="page">
+    <main class="page" :class="{ bare: isLogin }">
       <router-view v-slot="{ Component }">
         <Transition name="page" mode="out-in">
           <component :is="Component" />
@@ -31,7 +37,7 @@
       </router-view>
     </main>
 
-    <footer class="colophon">
+    <footer v-if="!isLogin" class="colophon">
       <div class="colophon-inner">
         <span><b>DrugIntel.ai</b> — 医药情报 · 聚类 · RAG 问答</span>
         <span>pgvector × FastAPI × Vue 3 · 毕业设计版</span>
@@ -41,16 +47,55 @@
 </template>
 
 <script setup>
-const navItems = [
-  { to: '/', label: '仪表盘' },
-  { to: '/news', label: '情报流' },
-  { to: '/chat', label: 'AI 问答' },
-  { to: '/alerts', label: '监测订阅' },
-  { to: '/monitor', label: '系统监控' },
-  { to: '/settings', label: '模型配置' },
-]
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { api } from './api'
+import { clearUser, session } from './session'
+
+const route = useRoute()
+const router = useRouter()
+const isLogin = computed(() => route.path === '/login')
+const navItems = computed(() => {
+  const items = [
+    { to: '/', label: '仪表盘' },
+    { to: '/news', label: '情报流' },
+    { to: '/chat', label: 'AI 问答' },
+    { to: '/alerts', label: '监测订阅' },
+  ]
+  if (session.user?.role === 'admin') {
+    items.push(
+      { to: '/monitor', label: '系统监控' },
+      { to: '/settings', label: '模型配置' },
+      { to: '/users', label: '用户' },
+    )
+  }
+  return items
+})
+
+async function logout() {
+  try {
+    await api.logout()
+  } catch {
+    /* 会话已失效时直接回到登录页 */
+  }
+  clearUser()
+  router.replace('/login')
+}
 
 const now = new Date()
 const today = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`
 const issue = String(Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5))
 </script>
+
+<style scoped>
+.mast-side { display: flex; align-items: center; gap: 8px; }
+.who {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.page.bare {
+  max-width: none;
+  padding: 0;
+}
+</style>

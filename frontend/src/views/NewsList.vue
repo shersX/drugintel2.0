@@ -17,6 +17,33 @@
       </div>
     </header>
 
+    <div class="filters">
+      <input
+        v-model="keyword"
+        type="search"
+        placeholder="搜索标题或摘要"
+        aria-label="搜索新闻"
+        @keydown.enter="applySearch"
+      />
+      <button class="secondary" :disabled="loading" @click="applySearch">搜索</button>
+      <div class="seg">
+        <button
+          type="button"
+          class="seg-btn"
+          :class="{ on: !crawler }"
+          @click="pickCrawler('')"
+        >全部</button>
+        <button
+          v-for="src in sources"
+          :key="src.key"
+          type="button"
+          class="seg-btn"
+          :class="{ on: crawler === src.key }"
+          @click="pickCrawler(src.key)"
+        >{{ src.label }}</button>
+      </div>
+    </div>
+
     <div v-if="error" class="card empty">
       <div class="empty-title">加载失败</div>
       <p>{{ error }}</p>
@@ -41,8 +68,9 @@
         <path d="M4 5h13a2 2 0 0 1 2 2v10a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z" />
         <path d="M8 9h7M8 13h7" />
       </svg>
-      <div class="empty-title">暂无新闻</div>
-      <p>运行 <code>python main.py</code> 采集并处理新闻后，这里会出现情报目录</p>
+      <div class="empty-title">{{ filtered ? '没有符合条件的新闻' : '暂无新闻' }}</div>
+      <p v-if="filtered">换一个关键词或来源再试。</p>
+      <p v-else>到<router-link to="/monitor">系统监控</router-link>选择爬虫并启动采集，处理完成后会出现在这里。</p>
     </div>
 
     <!-- 目录式条目 -->
@@ -90,19 +118,43 @@ import { api } from '../api'
 import { useAsync } from '../composables'
 import { crawlerLabel, formatTime } from '../format'
 
+const sources = [
+  { key: 'bioon', label: '生物谷' },
+  { key: 'globenewswire', label: 'GlobeNewswire' },
+  { key: 'prnewswire', label: 'PR Newswire' },
+]
 const items = ref([])
 const page = ref(1)
 const total = ref(0)
+const keyword = ref('')
+const appliedKeyword = ref('')
+const crawler = ref('')
 const { loading, error, run } = useAsync()
+const filtered = computed(() => Boolean(appliedKeyword.value || crawler.value))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)))
 
 async function load() {
-  const data = await run(() => api.news(page.value))
+  const data = await run(() => api.news(page.value, {
+    q: appliedKeyword.value,
+    crawler: crawler.value,
+  }))
   if (data) {
     items.value = data.items || []
     total.value = data.total || 0
   }
+}
+
+function applySearch() {
+  appliedKeyword.value = keyword.value.trim()
+  page.value = 1
+  load()
+}
+
+function pickCrawler(key) {
+  crawler.value = key && crawler.value === key ? '' : key
+  page.value = 1
+  load()
 }
 
 function reload() { load() }
@@ -117,6 +169,31 @@ onMounted(load)
 </script>
 
 <style scoped>
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.filters input[type="search"] {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg-btn {
+  border: 1px solid var(--rule);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.seg-btn.on {
+  background: var(--pine);
+  color: var(--paper);
+  border-color: var(--pine);
+}
 .head-row {
   display: flex;
   justify-content: space-between;
@@ -195,6 +272,7 @@ onMounted(load)
 
 .skeleton-entry { display: flex; gap: 24px; border-bottom: 1px solid var(--rule); padding: 24px 8px; }
 
+.empty a { color: var(--pine); font-weight: 700; }
 .pager {
   display: flex;
   align-items: center;

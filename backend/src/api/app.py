@@ -7,13 +7,35 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.src.auth.deps import admin_actor, clear_session_cookie, current_actor, set_session_cookie
+from backend.src.auth.service import (
+    COOKIE_NAME,
+    AccountError,
+    Actor,
+    AuthError,
+    QuotaError,
+    consume_chat_quota,
+    create_user,
+    list_users,
+    login,
+    record_audit,
+    remember_report,
+    reset_user_password,
+    resolve_actor,
+    revoke_token,
+    revoke_user_sessions,
+    set_chat_limit,
+    set_user_status,
+    update_profile as update_account,
+    user_owns_report,
+)
 from backend.src.alerts.matcher import (
     create_watchlist,
     delete_watchlist,
@@ -22,10 +44,15 @@ from backend.src.alerts.matcher import (
 from backend.src.api.response import fail, ok
 from backend.src.api.schemas import (
     AskRequest,
+    ChatLimitUpdate,
     CrawlStartRequest,
     LlmProfileTest,
     LlmProfileWrite,
+    LoginRequest,
+    PasswordReset,
+    ProfileUpdate,
     ReportExportRequest,
+    UserCreate,
     WatchlistCreate,
 )
 from backend.src.clustering.service import run_clustering
@@ -47,7 +74,7 @@ from backend.src.llm.profiles import (
     delete_profile,
     list_profiles,
     test_connection,
-    update_profile,
+    update_profile as update_llm_profile,
 )
 from backend.src.models.event import Event
 from backend.src.models.news import News
@@ -92,8 +119,110 @@ def api_health():
     return ok(health_check())
 
 
+@app.post("/api/auth/login")
+def api_login(body: LoginRequest, response: Response):
+    try:
+        token, actor = login(body.email, body.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    set_session_cookie(response, token)
+    return ok(actor.public())
+
+
+@app.post("/api/auth/logout")
+def api_logout(request: Request, response: Response, actor: Actor = Depends(current_actor)):
+    revoke_token(request.cookies.get(COOKIE_NAME))
+    clear_session_cookie(response)
+    record_audit(actor_id=actor.id, action="logout", target=f"user:{actor.id}")
+    return ok()
+
+
+@app.get("/api/auth/me")
+def api_me(actor: Actor = Depends(current_actor)):
+    return ok(actor.public())
+
+
+@app.put("/api/auth/profile")
+def api_profile(body: ProfileUpdate, request: Request, actor: Actor = Depends(current_actor)):
+    try:
+        updated = update_account(
+            actor,
+            display_name=body.display_name,
+            old_password=body.old_password,
+            new_password=body.new_password,
+            current_token=request.cookies.get(COOKIE_NAME),
+        )
+    except AuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ok(updated.public())
+
+
+@app.get("/api/admin/users")
+def api_admin_users(_actor: Actor = Depends(admin_actor)):
+    return ok(list_users())
+
+
+@app.post("/api/admin/users")
+def api_admin_user_create(body: UserCreate, actor: Actor = Depends(admin_actor)):
+    try:
+        return ok(
+            create_user(
+                email=body.email,
+                display_name=body.display_name,
+                password=body.password,
+                role=body.role,
+                daily_chat_limit=body.daily_chat_limit,
+                actor_id=actor.id,
+            )
+        )
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/users/{user_id}/disable")
+def api_admin_user_disable(user_id: int, actor: Actor = Depends(admin_actor)):
+    try:
+        return ok(set_user_status(user_id, "disabled", actor))
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/users/{user_id}/enable")
+def api_admin_user_enable(user_id: int, actor: Actor = Depends(admin_actor)):
+    try:
+        return ok(set_user_status(user_id, "active", actor))
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+def api_admin_user_reset(user_id: int, body: PasswordReset, actor: Actor = Depends(admin_actor)):
+    try:
+        reset_user_password(user_id, body.password, actor.id)
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ok({"id": user_id})
+
+
+@app.post("/api/admin/users/{user_id}/kick")
+def api_admin_user_kick(user_id: int, actor: Actor = Depends(admin_actor)):
+    revoke_user_sessions(user_id)
+    record_audit(actor_id=actor.id, action="session_revoke", target=f"user:{user_id}")
+    return ok({"id": user_id})
+
+
+@app.put("/api/admin/users/{user_id}/chat-limit")
+def api_admin_user_limit(user_id: int, body: ChatLimitUpdate, actor: Actor = Depends(admin_actor)):
+    try:
+        return ok(set_chat_limit(user_id, body.daily_chat_limit, actor.id))
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/monitor/status")
-def api_monitor_status():
+def api_monitor_status(_actor: Actor = Depends(admin_actor)):
     return ok(
         {
             "processing": processing_status(),
@@ -104,27 +233,32 @@ def api_monitor_status():
 
 
 @app.get("/api/stats/overview")
-def api_stats_overview():
+def api_stats_overview(_actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         return ok(overview_stats(session))
 
 
 @app.get("/api/stats/stages")
-def api_stats_stages():
+def api_stats_stages(_actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         return ok(development_stage_stats(session))
 
 
 @app.get("/api/stats/trend")
-def api_stats_trend(days: int = Query(14, ge=1, le=90)):
+def api_stats_trend(days: int = Query(14, ge=1, le=90), _actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         return ok(news_trend_stats(session, days=days))
 
 
 @app.get("/api/stats/keywords")
-def api_stats_keywords(limit: int = Query(20, ge=1, le=100)):
+def api_stats_keywords(limit: int = Query(20, ge=1, le=100), _actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         return ok(hot_keywords_stats(session, limit=limit))
+
+
+def _like_term(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 @app.get("/api/news")
@@ -132,6 +266,8 @@ def api_news_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     crawler: Optional[str] = None,
+    q: Optional[str] = None,
+    _actor: Actor = Depends(current_actor),
 ):
     from sqlalchemy import func
 
@@ -139,6 +275,10 @@ def api_news_list(
         base = select(News)
         if crawler:
             base = base.where(News.crawler == crawler)
+        term = (q or "").strip()
+        if term:
+            like = _like_term(term)
+            base = base.where(or_(News.title.ilike(like), News.abstract.ilike(like)))
         total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
         rows = session.scalars(
             base.order_by(News.publish_time.desc().nulls_last(), News.id.desc())
@@ -163,7 +303,7 @@ def api_news_list(
 
 
 @app.get("/api/news/{news_id}")
-def api_news_detail(news_id: int):
+def api_news_detail(news_id: int, _actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         news = session.get(News, news_id)
         if news is None:
@@ -196,7 +336,7 @@ def api_news_detail(news_id: int):
 
 
 @app.get("/api/events")
-def api_events(page: int = 1, page_size: int = 20):
+def api_events(page: int = 1, page_size: int = 20, _actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         stmt = select(Event).order_by(Event.updated_at.desc())
         rows = session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
@@ -215,12 +355,16 @@ def api_events(page: int = 1, page_size: int = 20):
 
 
 @app.post("/api/cluster/run")
-def api_cluster_run():
+def api_cluster_run(_actor: Actor = Depends(admin_actor)):
     return ok(run_clustering())
 
 
 @app.post("/api/chat/ask")
-async def api_chat_ask(body: AskRequest):
+async def api_chat_ask(body: AskRequest, actor: Actor = Depends(current_actor)):
+    try:
+        consume_chat_quota(actor.id)
+    except QuotaError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     result = await ask(body.query, top_k=body.top_k, session_id=body.session_id)
     return ok(
         {
@@ -234,6 +378,10 @@ async def api_chat_ask(body: AskRequest):
 
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
+    actor = resolve_actor(websocket.cookies.get(COOKIE_NAME))
+    if actor is None:
+        await websocket.close(code=4401)
+        return
     await websocket.accept()
     try:
         while True:
@@ -247,6 +395,11 @@ async def ws_chat(websocket: WebSocket):
             if not query:
                 await websocket.send_json({"type": "error", "message": "empty query"})
                 continue
+            try:
+                consume_chat_quota(actor.id)
+            except QuotaError as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
             async for event in ask_stream(
                 query,
                 top_k=int(payload.get("top_k") or 5),
@@ -258,9 +411,9 @@ async def ws_chat(websocket: WebSocket):
 
 
 @app.get("/api/watchlist")
-def api_watchlist_list(user_id: Optional[int] = None):
+def api_watchlist_list(actor: Actor = Depends(current_actor)):
     with session_scope() as session:
-        rows = list_watchlists(session, user_id=user_id)
+        rows = list_watchlists(session, user_id=actor.id)
         return ok(
             [
                 {
@@ -277,11 +430,11 @@ def api_watchlist_list(user_id: Optional[int] = None):
 
 
 @app.post("/api/watchlist")
-def api_watchlist_create(body: WatchlistCreate):
+def api_watchlist_create(body: WatchlistCreate, actor: Actor = Depends(current_actor)):
     with session_scope() as session:
         row = create_watchlist(
             session,
-            user_id=body.user_id,
+            user_id=actor.id,
             entity_type=body.entity_type,
             entity_name=body.entity_name,
             email=body.email,
@@ -291,40 +444,42 @@ def api_watchlist_create(body: WatchlistCreate):
 
 
 @app.delete("/api/watchlist/{watchlist_id}")
-def api_watchlist_delete(watchlist_id: int):
+def api_watchlist_delete(watchlist_id: int, actor: Actor = Depends(current_actor)):
     with session_scope() as session:
-        if not delete_watchlist(session, watchlist_id):
+        if not delete_watchlist(session, watchlist_id, actor.id):
             raise HTTPException(404, "watchlist not found")
         return ok({"deleted": watchlist_id})
 
 
 @app.post("/api/crawl/start")
-def api_crawl_start(body: CrawlStartRequest):
+def api_crawl_start(body: CrawlStartRequest, actor: Actor = Depends(admin_actor)):
     try:
-        return ok(
-            start_schedule(body.schedule_mode, body.daily_time, body.crawler_keys)
-        )
+        payload = start_schedule(body.schedule_mode, body.daily_time, body.crawler_keys)
     except CrawlConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_audit(actor_id=actor.id, action="crawl_start", target="crawl")
+    return ok(payload)
 
 
 @app.post("/api/crawl/stop")
-def api_crawl_stop():
-    return ok(stop_schedule())
+def api_crawl_stop(actor: Actor = Depends(admin_actor)):
+    payload = stop_schedule()
+    record_audit(actor_id=actor.id, action="crawl_stop", target="crawl")
+    return ok(payload)
 
 
 @app.get("/api/crawl/config")
-def api_crawl_config():
+def api_crawl_config(_actor: Actor = Depends(admin_actor)):
     return ok(config_payload())
 
 
 @app.get("/api/crawl/status")
-def api_crawl_status():
+def api_crawl_status(_actor: Actor = Depends(current_actor)):
     return ok(status_payload())
 
 
 @app.get("/api/llm/profiles")
-def api_llm_profiles():
+def api_llm_profiles(_actor: Actor = Depends(admin_actor)):
     return ok(list_profiles())
 
 
@@ -343,10 +498,9 @@ def _llm_http_error(exc: LlmProfileError) -> HTTPException:
 
 
 @app.post("/api/llm/profiles")
-def api_llm_profile_create(body: LlmProfileWrite):
+def api_llm_profile_create(body: LlmProfileWrite, actor: Actor = Depends(admin_actor)):
     try:
-        return ok(
-            create_profile(
+        created = create_profile(
                 name=body.name,
                 api_key=body.api_key or "",
                 base_url=body.base_url,
@@ -359,13 +513,14 @@ def api_llm_profile_create(body: LlmProfileWrite):
                 reranker_base_url=body.reranker_base_url,
                 reranker_model=body.reranker_model,
             )
-        )
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
+    record_audit(actor_id=actor.id, action="llm_create", target=f"llm:{created.get('id', '')}", detail=body.name)
+    return ok(created)
 
 
 @app.post("/api/llm/profiles/test")
-async def api_llm_profile_test(body: LlmProfileTest):
+async def api_llm_profile_test(body: LlmProfileTest, _actor: Actor = Depends(admin_actor)):
     try:
         return ok(
             await test_connection(
@@ -380,10 +535,9 @@ async def api_llm_profile_test(body: LlmProfileTest):
 
 
 @app.put("/api/llm/profiles/{profile_id}")
-def api_llm_profile_update(profile_id: int, body: LlmProfileWrite):
+def api_llm_profile_update(profile_id: int, body: LlmProfileWrite, actor: Actor = Depends(admin_actor)):
     try:
-        return ok(
-            update_profile(
+        updated = update_llm_profile(
                 profile_id,
                 name=body.name,
                 api_key=body.api_key,
@@ -398,41 +552,48 @@ def api_llm_profile_update(profile_id: int, body: LlmProfileWrite):
                 reranker_model=body.reranker_model,
                 rebuild=body.rebuild,
             )
-        )
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
+    record_audit(actor_id=actor.id, action="llm_update", target=f"llm:{profile_id}", detail=body.name)
+    return ok(updated)
 
 
 @app.delete("/api/llm/profiles/{profile_id}")
-def api_llm_profile_delete(profile_id: int):
+def api_llm_profile_delete(profile_id: int, actor: Actor = Depends(admin_actor)):
     try:
         delete_profile(profile_id)
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
+    record_audit(actor_id=actor.id, action="llm_delete", target=f"llm:{profile_id}")
     return ok({"deleted": profile_id})
 
 
 @app.post("/api/llm/profiles/{profile_id}/activate")
-def api_llm_profile_activate(profile_id: int, rebuild: bool = Query(False)):
+def api_llm_profile_activate(profile_id: int, rebuild: bool = Query(False), actor: Actor = Depends(admin_actor)):
     try:
-        return ok(activate_profile(profile_id, rebuild=rebuild))
+        payload = activate_profile(profile_id, rebuild=rebuild)
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
+    record_audit(actor_id=actor.id, action="llm_activate", target=f"llm:{profile_id}")
+    return ok(payload)
 
 
 @app.post("/api/reports/export")
-async def api_report_export(body: ReportExportRequest):
+async def api_report_export(body: ReportExportRequest, actor: Actor = Depends(current_actor)):
     path = await export_report(
         question=body.question,
         answer=body.answer,
         sources=body.sources,
         fmt=body.fmt,
     )
+    remember_report(actor.id, path.name)
     return ok({"path": str(path), "filename": path.name})
 
 
 @app.get("/api/reports/download/{filename}")
-def api_report_download(filename: str):
+def api_report_download(filename: str, actor: Actor = Depends(current_actor)):
+    if "/" in filename or "\\" in filename or not user_owns_report(actor.id, filename):
+        raise HTTPException(404, "file not found")
     base = Path(__file__).resolve().parents[3] / "outjson" / "reports"
     path = (base / filename).resolve()
     if not str(path).startswith(str(base.resolve())) or not path.exists():

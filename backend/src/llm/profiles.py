@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import aiohttp
 from sqlalchemy import select, update
 
+from backend.src.core.keystore import open_secret, seal
 from backend.src.db.session import (
     rebuild_vector_columns,
     session_scope,
@@ -83,16 +84,16 @@ def _public(row: LlmProfile) -> Dict[str, Any]:
         "base_url": row.base_url,
         "chat_model": row.chat_model,
         "has_chat_key": bool(row.api_key),
-        "chat_key_hint": _mask_key(row.api_key),
+        "chat_key_hint": _mask_key(open_secret(row.api_key)),
         "embedding_base_url": row.embedding_base_url,
         "embedding_model": row.embedding_model,
         "embedding_dim": row.embedding_dim,
         "has_embedding_key": bool(row.embedding_api_key),
-        "embedding_key_hint": _mask_key(row.embedding_api_key),
+        "embedding_key_hint": _mask_key(open_secret(row.embedding_api_key)),
         "reranker_base_url": row.reranker_base_url,
         "reranker_model": row.reranker_model,
         "has_reranker_key": bool(row.reranker_api_key),
-        "reranker_key_hint": _mask_key(row.reranker_api_key),
+        "reranker_key_hint": _mask_key(open_secret(row.reranker_api_key)),
         "is_active": row.is_active,
     }
 
@@ -138,14 +139,14 @@ def create_profile(
     with session_scope() as session:
         row = LlmProfile(
             name=_require_text(name, "名称")[:100],
-            api_key=_require_text(api_key, "对话 API Key"),
+            api_key=seal(_require_text(api_key, "对话 API Key")),
             base_url=_clean_url(_require_text(base_url, "对话 Base URL"))[:300],
             chat_model=_require_text(chat_model, "对话模型")[:200],
-            embedding_api_key=_require_text(embedding_api_key, "嵌入 API Key"),
+            embedding_api_key=seal(_require_text(embedding_api_key, "嵌入 API Key")),
             embedding_base_url=_clean_url(_require_text(embedding_base_url, "嵌入 Base URL"))[:300],
             embedding_model=_require_text(embedding_model, "嵌入模型")[:200],
             embedding_dim=_require_dim(embedding_dim),
-            reranker_api_key=_require_text(reranker_api_key, "重排 API Key"),
+            reranker_api_key=seal(_require_text(reranker_api_key, "重排 API Key")),
             reranker_base_url=_clean_url(_require_text(reranker_base_url, "重排 Base URL"))[:300],
             reranker_model=_require_text(reranker_model, "重排模型")[:200],
             is_active=False,
@@ -158,7 +159,7 @@ def create_profile(
 def _assign_key(current: str, incoming: Optional[str], label: str) -> str:
     text = (incoming or "").strip()
     if text:
-        return text
+        return seal(text)
     if current:
         return current
     raise LlmProfileError(f"请填写{label}")
@@ -250,7 +251,7 @@ def _stored_key(profile_id: Optional[int], slot: str) -> str:
         row = session.get(LlmProfile, profile_id)
         if row is None:
             raise LlmProfileError("配置不存在")
-        return getattr(row, attr) or ""
+        return open_secret(getattr(row, attr) or "")
 
 
 async def test_connection(

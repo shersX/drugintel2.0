@@ -6,8 +6,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.13.5",
+    "argon2-cffi>=25.1.0",
     "beautifulsoup4>=4.14.3",
     "celery>=5.6.3",
+    "cryptography>=50.0.2",
     "dotenv>=0.9.9",
     "fastapi>=0.115.0",
     "firecrawl>=4.32.0",
@@ -27,3 +29,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "websockets>=12.0",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+default = true

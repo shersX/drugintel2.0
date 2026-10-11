@@ -1,5 +1,6 @@
 """ORM 模型导出。"""
 
+from backend.src.models.account import AppUser, AuditLog, ChatUsage, ReportFile, UserSession
 from backend.src.models.base import Base
 from backend.src.models.crawl import CrawlConfig, CrawlRun
 from backend.src.models.entities import (
@@ -25,4 +26,9 @@ __all__ = [
     "CrawlConfig",
     "CrawlRun",
     "LlmProfile",
+    "AppUser",
+    "UserSession",
+    "AuditLog",
+    "ChatUsage",
+    "ReportFile",
 ]

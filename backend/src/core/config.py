@@ -6,6 +6,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+from backend.src.core.keystore import open_secret
 from backend.src.core.logger import get_logger
 
 load_dotenv()
@@ -33,14 +34,14 @@ def _active_llm_profile() -> Optional[SimpleNamespace]:
             if row is None:
                 return None
             return SimpleNamespace(
-                api_key=(row.api_key or "").strip(),
+                api_key=open_secret(row.api_key),
                 base_url=(row.base_url or "").strip().rstrip("/"),
                 chat_model=(row.chat_model or "").strip(),
-                embedding_api_key=(row.embedding_api_key or "").strip(),
+                embedding_api_key=open_secret(row.embedding_api_key),
                 embedding_base_url=(row.embedding_base_url or "").strip().rstrip("/"),
                 embedding_model=(row.embedding_model or "").strip(),
                 embedding_dim=int(row.embedding_dim or 0),
-                reranker_api_key=(row.reranker_api_key or "").strip(),
+                reranker_api_key=open_secret(row.reranker_api_key),
                 reranker_base_url=(row.reranker_base_url or "").strip().rstrip("/"),
                 reranker_model=(row.reranker_model or "").strip(),
             )

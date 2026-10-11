@@ -17,6 +17,12 @@
     </div>
 
     <template v-else>
+      <p v-if="!loading && !overview.news_count" class="card note">
+        <template v-if="session.user?.role === 'admin'">
+          库里还没有新闻。到 <router-link to="/monitor">系统监控</router-link> 选择爬虫并启动采集。
+        </template>
+        <template v-else>库里还没有新闻。采集由管理员在系统监控里启动。</template>
+      </p>
       <!-- 01 数字全景 -->
       <section class="reveal" style="--reveal-delay:100ms">
         <div class="sec-mark"><span class="no">01</span><h3>数字全景</h3><span class="rule"></span></div>
@@ -68,6 +74,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
+import { session } from '../session'
 import { useAsync } from '../composables'
 import StatCard from '../components/StatCard.vue'
 import TrendChart from '../components/TrendChart.vue'
@@ -109,6 +116,8 @@ onMounted(load)
 </script>
 
 <style scoped>
+.note { margin-bottom: 20px; color: var(--ink-soft); }
+.note a { color: var(--pine); font-weight: 700; }
 .bento {
   display: grid;
   grid-template-columns: 7fr 5fr;

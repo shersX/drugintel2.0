@@ -30,12 +30,17 @@ def ensure_schema() -> None:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE crawler_task ADD COLUMN IF NOT EXISTS log_text TEXT"))
     _ensure_llm_profile_columns(engine)
+    _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
     try:
         create_vector_indexes(engine)
     except RuntimeError as exc:
         logger.warning("%s（表为空时部分环境可稍后重试）", exc)
     _seed_crawl_config()
+    from backend.src.auth.service import bind_watchlist_owners, ensure_first_admin
+
+    ensure_first_admin()
+    bind_watchlist_owners()
     logger.info("数据库结构已就绪")
 
 
@@ -99,6 +104,26 @@ def _ensure_llm_profile_columns(engine) -> None:
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET NOT NULL"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET DEFAULT 1024"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET NOT NULL"))
+
+
+def _encrypt_llm_profile_keys() -> None:
+    """把仍是明文的模型密钥改成密文。已经加密的行跳过。"""
+    from backend.src.core.keystore import is_sealed, seal
+    from backend.src.models.llm_profile import LlmProfile
+
+    with session_scope() as session:
+        if session.execute(text("SELECT to_regclass('public.llm_profile')")).scalar() is None:
+            return
+        rows = list(session.scalars(select(LlmProfile)).all())
+        changed = 0
+        for row in rows:
+            for attr in ("api_key", "embedding_api_key", "reranker_api_key"):
+                value = getattr(row, attr) or ""
+                if value and not is_sealed(value):
+                    setattr(row, attr, seal(value))
+                    changed += 1
+        if changed:
+            logger.info("已加密 %s 个模型密钥字段", changed)
 
 
 def _ensure_default_vector_dim(engine, dim: int = 1024) -> None:

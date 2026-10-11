@@ -59,9 +59,9 @@ def create_watchlist(
     return row
 
 
-def delete_watchlist(session: Session, watchlist_id: int) -> bool:
+def delete_watchlist(session: Session, watchlist_id: int, user_id: int) -> bool:
     row = session.get(Watchlist, watchlist_id)
-    if row is None:
+    if row is None or row.user_id != user_id:
         return False
     session.delete(row)
     return True

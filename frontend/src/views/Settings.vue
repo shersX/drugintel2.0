@@ -29,9 +29,6 @@
       <article v-for="item in profiles" :key="item.id" class="card profile">
         <div class="profile-head">
           <span class="pill" :class="item.is_active ? 'ok' : ''">{{ item.is_active ? '启用中' : '未启用' }}</span>
-          <span v-if="item.chat_key_hint" class="meta mono">对话 {{ item.chat_key_hint }}</span>
-          <span v-if="item.embedding_key_hint" class="meta mono">嵌入 {{ item.embedding_key_hint }} · {{ item.embedding_dim }}维</span>
-          <span v-if="item.reranker_key_hint" class="meta mono">重排 {{ item.reranker_key_hint }}</span>
         </div>
         <ProfileForm
           :model="item"
@@ -238,5 +235,4 @@ onMounted(load)
 .profile { margin-bottom: 16px; }
 .profile-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .form-error { color: var(--clay); margin: 8px 0 0; }
-.mono { font-family: var(--font-mono); }
 </style>

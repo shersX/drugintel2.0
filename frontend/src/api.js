@@ -1,9 +1,16 @@
 const BASE = ''
 
+let on401 = () => {}
+
+export function onUnauthorized(fn) {
+  on401 = fn
+}
+
 async function request(path, options = {}) {
   let res
   try {
     res = await fetch(`${BASE}${path}`, {
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
       ...options,
     })
@@ -16,6 +23,7 @@ async function request(path, options = {}) {
   } catch {
     throw new Error(res.status === 500 ? '后端响应异常（请检查服务与数据库连接）' : `服务异常（HTTP ${res.status}）`)
   }
+  if (res.status === 401 && !path.startsWith('/api/auth/login')) on401()
   if (!res.ok || data.code !== 0) {
     const detail = data.detail
     const message = data.message
@@ -30,10 +38,32 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  login: (body) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+  me: () => request('/api/auth/me'),
+  updateProfile: (body) => request('/api/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
+  users: () => request('/api/admin/users'),
+  createUser: (body) => request('/api/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+  disableUser: (id) => request(`/api/admin/users/${id}/disable`, { method: 'POST' }),
+  enableUser: (id) => request(`/api/admin/users/${id}/enable`, { method: 'POST' }),
+  resetUserPassword: (id, password) => request(`/api/admin/users/${id}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  }),
+  kickUser: (id) => request(`/api/admin/users/${id}/kick`, { method: 'POST' }),
+  setChatLimit: (id, daily_chat_limit) => request(`/api/admin/users/${id}/chat-limit`, {
+    method: 'PUT',
+    body: JSON.stringify({ daily_chat_limit }),
+  }),
   overview: () => request('/api/stats/overview'),
   trend: () => request('/api/stats/trend'),
   keywords: () => request('/api/stats/keywords'),
-  news: (page = 1) => request(`/api/news?page=${page}&page_size=20`),
+  news: (page = 1, { q = '', crawler = '' } = {}) => {
+    const params = new URLSearchParams({ page: String(page), page_size: '20' })
+    if (q) params.set('q', q)
+    if (crawler) params.set('crawler', crawler)
+    return request(`/api/news?${params}`)
+  },
   newsDetail: (id) => request(`/api/news/${id}`),
   events: () => request('/api/events'),
   ask: (body) => request('/api/chat/ask', { method: 'POST', body: JSON.stringify(body) }),

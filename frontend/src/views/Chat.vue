@@ -35,23 +35,25 @@
             <!-- 来源卡片 -->
             <div v-if="m.sources?.length" class="sources">
               <div class="sources-head">检索来源</div>
-              <a
-                v-for="s in m.sources"
-                :key="s.id"
-                :href="s.detail_url || `/news/${s.id}`"
-                target="_blank"
-                rel="noopener"
-                class="source-card"
-              >
-                <div class="source-top">
-                  <span class="source-id">[#{{ s.id }}]</span>
-                  <span class="source-title">{{ s.title }}</span>
-                  <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
-                </div>
-                <div class="score-track">
-                  <span class="score-fill" :style="{ width: Math.round((s.score || 0) * 100) + '%' }"></span>
-                </div>
-              </a>
+              <div v-for="s in m.sources" :key="s.id" class="source-card">
+                <router-link :to="`/news/${s.id}`" class="source-main">
+                  <div class="source-top">
+                    <span class="source-id">[#{{ s.id }}]</span>
+                    <span class="source-title">{{ s.title }}</span>
+                    <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
+                  </div>
+                  <div class="score-track">
+                    <span class="score-fill" :style="{ width: Math.round((s.score || 0) * 100) + '%' }"></span>
+                  </div>
+                </router-link>
+                <a
+                  v-if="s.detail_url"
+                  class="source-origin"
+                  :href="s.detail_url"
+                  target="_blank"
+                  rel="noopener"
+                >原文</a>
+              </div>
             </div>
 
             <div v-if="m.error" class="msg-error">{{ m.error }}</div>
@@ -244,13 +246,27 @@ async function exportReport(m) {
   margin-bottom: var(--sp-2);
 }
 .source-card {
-  display: block;
-  color: inherit;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+}
+.source-main {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
   border-radius: var(--r-sm);
   transition: background var(--dur-fast);
 }
-.source-card:hover { background: var(--wash); }
+.source-main:hover { background: var(--wash); }
+.source-origin {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--pine);
+  font-weight: 700;
+  padding-top: 2px;
+}
 .source-top { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); }
 .source-id { font-family: var(--font-mono); color: var(--moss); font-size: var(--fs-xs); }
 .source-title { flex: 1; min-width: 0; }

@@ -131,7 +131,7 @@ async def export_report(
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     summary = await generate_report_summary(question, answer, sources)
     title = "DrugIntel 研究报告"
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     if fmt == "docx":
         data = build_docx_bytes(
             title=title, summary=summary, question=question, answer=answer, sources=sources

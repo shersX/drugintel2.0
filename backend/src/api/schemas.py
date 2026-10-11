@@ -54,3 +54,30 @@ class LlmProfileTest(BaseModel):
     api_key: Optional[str] = None
     profile_id: Optional[int] = None
     slot: str = "chat"
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ProfileUpdate(BaseModel):
+    display_name: Optional[str] = None
+    old_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
+class UserCreate(BaseModel):
+    email: str
+    display_name: str = ""
+    password: str
+    role: str = "user"
+    daily_chat_limit: int = 50
+
+
+class PasswordReset(BaseModel):
+    password: str
+
+
+class ChatLimitUpdate(BaseModel):
+    daily_chat_limit: int
