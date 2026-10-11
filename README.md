@@ -5,21 +5,17 @@
 ## 快速开始
 
 ```bash
-# 1) 依赖
-uv sync
-
-# 2) 基础设施（WSL）
-export PGDATA_HOST_PATH=$HOME/drugintel-pgdata
+# .env 中填写 SILICONFLOW_API_KEY
 docker compose up -d
-uv run python scripts/init_db.py
+```
 
-# 3) 采集+处理+聚类
-uv run python main.py
+浏览器打开 http://127.0.0.1:8000 。镜像构建时已经执行前端打包，页面和 API 由同一个容器提供，不需要再 `npm install`。容器启动时自动建表，采集保持停止。
 
-# 4) API
-uv run uvicorn backend.src.api.app:app --host 0.0.0.0 --port 8000
+在监控页选好爬虫和节奏（每小时，或每天的某个时刻）后点「启动」。第一次采集立刻开始，之后按该节奏持续运行。`scripts/init_db.py` 与 `python main.py` 只用于手动补跑。
 
-# 5) 前端
+只在改前端、需要热更新时，才在本机另开开发服务器（API 仍可由上面的容器提供）：
+
+```bash
 cd frontend && npm install && npm run dev
 ```
 
@@ -47,6 +43,8 @@ cd frontend && npm install && npm run dev
 ## API 摘要
 
 - `GET /api/health` / `GET /api/monitor/status`
+- `GET /api/crawl/config` / `GET /api/crawl/status`
+- `POST /api/crawl/start` / `POST /api/crawl/stop`
 - `GET /api/news` / `GET /api/news/{id}` / `GET /api/events`
 - `POST /api/chat/ask` / `WS /ws/chat`
 - `CRUD /api/watchlist`

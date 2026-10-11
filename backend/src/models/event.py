@@ -19,7 +19,7 @@ class Event(Base):
     event_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    centroid_embedding = mapped_column(Vector(1024), nullable=True)
+    centroid_embedding = mapped_column(Vector(), nullable=True)
     news_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     representative_news_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

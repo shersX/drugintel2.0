@@ -5,6 +5,7 @@ import NewsDetail from './views/NewsDetail.vue'
 import Chat from './views/Chat.vue'
 import Alerts from './views/Alerts.vue'
 import Monitor from './views/Monitor.vue'
+import Settings from './views/Settings.vue'
 
 export default createRouter({
   history: createWebHistory(),
@@ -15,5 +16,6 @@ export default createRouter({
     { path: '/chat', component: Chat },
     { path: '/alerts', component: Alerts },
     { path: '/monitor', component: Monitor },
+    { path: '/settings', component: Settings },
   ],
 })

@@ -1,6 +1,7 @@
 """ORM 模型导出。"""
 
 from backend.src.models.base import Base
+from backend.src.models.crawl import CrawlConfig, CrawlRun
 from backend.src.models.entities import (
     Company,
     CrawlerTask,
@@ -9,6 +10,7 @@ from backend.src.models.entities import (
     Watchlist,
 )
 from backend.src.models.event import Event
+from backend.src.models.llm_profile import LlmProfile
 from backend.src.models.news import News
 
 __all__ = [
@@ -20,4 +22,7 @@ __all__ = [
     "DrugDevelopmentEvent",
     "Watchlist",
     "CrawlerTask",
+    "CrawlConfig",
+    "CrawlRun",
+    "LlmProfile",
 ]

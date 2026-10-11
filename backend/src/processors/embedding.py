@@ -1,4 +1,4 @@
-"""向量生成（任务 2.5）：调用 SiliconFlow Embeddings API（BAAI/bge-m3，1024 维）。"""
+"""向量生成：调用 OpenAI 兼容 Embeddings API，维度以当前配置为准。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from backend.src.core.logger import get_logger
 logger = get_logger("processors.embedding")
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
-EXPECTED_DIM = 1024
 
 
 class SiliconFlowEmbeddingClient:
@@ -29,27 +28,30 @@ class SiliconFlowEmbeddingClient:
         timeout_sec: float = 90.0,
         max_retries: int = 3,
         max_concurrency: int = 5,
+        expected_dim: int = 1024,
     ):
         if not api_key:
-            raise ValueError("SILICONFLOW_API_KEY 未设置，无法调用 Embedding")
+            raise ValueError("嵌入接口的 API Key 未设置，无法调用 Embedding")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout_sec = timeout_sec
         self._max_retries = max(1, max_retries)
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
+        self.expected_dim = expected_dim
 
     @classmethod
     def from_env(cls) -> "SiliconFlowEmbeddingClient":
         llm = LLMEnvConfig.load()
         emb = EmbeddingEnvConfig.load()
         return cls(
-            api_key=llm.api_key,
-            base_url=llm.base_url,
+            api_key=emb.api_key,
+            base_url=emb.base_url,
             model=emb.model,
             timeout_sec=llm.timeout_sec,
             max_retries=llm.max_retries,
             max_concurrency=emb.max_concurrency,
+            expected_dim=emb.dim,
         )
 
     async def embed(self, texts: Sequence[str]) -> List[List[float]]:
@@ -135,7 +137,7 @@ async def embed_items(
     client: Optional[SiliconFlowEmbeddingClient] = None,
     batch_size: int = 16,
 ) -> List[MutableMapping]:
-    """为新闻写入 embedding 字段（list[float]，期望 1024 维）。"""
+    """为新闻写入 embedding。长度必须等于当前配置的维度，否则留空。"""
     if not items:
         return []
     emb_client = client or SiliconFlowEmbeddingClient.from_env()
@@ -151,16 +153,19 @@ async def embed_items(
             for item in batch:
                 item["embedding"] = None
             continue
+        expect = emb_client.expected_dim
         for item, vec in zip(batch, vectors):
-            if len(vec) != EXPECTED_DIM:
+            if len(vec) != expect:
                 logger.warning(
-                    "向量维度异常 title=%s dim=%s expect=%s",
+                    "向量维度不符，已跳过 title=%s dim=%s expect=%s",
                     str(item.get("title") or "")[:40],
                     len(vec),
-                    EXPECTED_DIM,
+                    expect,
                 )
+                item["embedding"] = None
+                continue
             item["embedding"] = vec
 
     ok = sum(1 for i in result if i.get("embedding"))
-    logger.info("向量生成 完成=%s/%s model 维=%s", ok, len(result), EXPECTED_DIM)
+    logger.info("向量生成 完成=%s/%s 维=%s", ok, len(result), emb_client.expected_dim)
     return result

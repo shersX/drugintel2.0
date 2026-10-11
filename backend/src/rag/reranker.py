@@ -27,7 +27,7 @@ async def rerank(
 
     llm = LLMEnvConfig.load()
     emb = EmbeddingEnvConfig.load()
-    if not llm.api_key:
+    if not emb.reranker_api_key:
         return list(hits)[:top_k]
 
     documents = []
@@ -35,7 +35,7 @@ async def rerank(
         text = f"{news.title}\n{(news.abstract or news.content or '')[:1500]}"
         documents.append(text)
 
-    url = f"{llm.base_url.rstrip('/')}/rerank"
+    url = f"{emb.reranker_base_url.rstrip('/')}/rerank"
     payload = {
         "model": emb.reranker_model,
         "query": query,
@@ -44,7 +44,7 @@ async def rerank(
         "return_documents": False,
     }
     headers = {
-        "Authorization": f"Bearer {llm.api_key}",
+        "Authorization": f"Bearer {emb.reranker_api_key}",
         "Content-Type": "application/json",
     }
     try:

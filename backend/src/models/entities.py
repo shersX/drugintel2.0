@@ -64,3 +64,4 @@ class CrawlerTask(Base):
     total_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     success_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    log_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

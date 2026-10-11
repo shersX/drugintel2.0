@@ -26,6 +26,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/ ./backend/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
+COPY tasks/ ./tasks/
 COPY main.py ./
 
 # 从前端构建阶段复制产物
@@ -40,6 +41,8 @@ WORKDIR /app
 
 # 复制虚拟环境和源代码
 COPY --from=backend-build /app /app
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # 激活虚拟环境
 ENV VIRTUAL_ENV=/app/.venv
@@ -51,4 +54,5 @@ ENV REDIS_URL="redis://redis:6379/0"
 
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "backend.src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

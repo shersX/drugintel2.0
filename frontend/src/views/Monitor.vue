@@ -5,7 +5,7 @@
         <div>
           <div class="ed-kicker">System · 印务检查</div>
           <h1 class="ed-title">运行监控</h1>
-          <p class="ed-lede">基础设施健康、流水线状态与爬虫任务记录。</p>
+          <p class="ed-lede">基础设施健康、流水线状态。采集在此选择爬虫与节奏后启动，并查看每个爬虫的日志。</p>
         </div>
         <button class="secondary" :disabled="loading" @click="load">刷新</button>
       </div>
@@ -42,9 +42,71 @@
         </div>
       </section>
 
+      <section class="card reveal" style="margin-top:32px;--reveal-delay:120ms">
+        <div class="sec-mark"><span class="no">02</span><h3>采集调度</h3><span class="rule"></span></div>
+        <div class="crawl-status">
+          <span class="pill" :class="phaseClass">{{ phaseLabel }}</span>
+          <span class="meta">最近一轮 {{ fmt(crawl?.last_run?.started_at) }}</span>
+          <span class="meta">下次预计 {{ formatNext(crawl?.next_run_at) }}</span>
+        </div>
+        <p v-if="crawl?.last_run?.error" class="form-error">{{ crawl.last_run.error }}</p>
+
+        <div class="field">
+          <label>爬虫</label>
+          <div class="seg">
+            <button
+              type="button"
+              v-for="src in sources"
+              :key="src.key"
+              class="seg-btn"
+              :class="{ on: selected.includes(src.key) }"
+              :disabled="locked"
+              @click="toggleSource(src.key)"
+            >{{ src.label }}</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>节奏</label>
+          <div class="seg">
+            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'hourly' }" :disabled="locked" @click="scheduleMode = 'hourly'">每小时</button>
+            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'daily' }" :disabled="locked" @click="scheduleMode = 'daily'">每天</button>
+          </div>
+        </div>
+
+        <div class="field" v-if="scheduleMode === 'daily'">
+          <label for="daily-time">每天时刻</label>
+          <input id="daily-time" type="time" v-model="dailyTime" :disabled="locked" />
+        </div>
+
+        <p class="meta hint">
+          {{ scheduleMode === 'hourly'
+            ? '点启动后立刻采集一次，之后每小时持续执行。'
+            : '点启动后立刻采集一次；当天到达所选时刻还会再采集，之后每天该时刻执行。' }}
+        </p>
+
+        <div class="row">
+          <button type="button" :disabled="!canStart" @click="startCrawl">{{ actionLoading && !locked ? '启动中…' : '启动' }}</button>
+          <button type="button" class="secondary" :disabled="!locked || actionLoading" @click="stopCrawl">停止</button>
+        </div>
+        <p v-if="actionError" class="form-error">{{ actionError }}</p>
+
+        <div class="log-list">
+          <article v-for="c in crawlerLogs" :key="c.key" class="log-card">
+            <div class="log-head">
+              <strong>{{ c.name || sourceLabel(c.key) }}</strong>
+              <span class="pill" :class="statusClass(c.status)">{{ c.status ? statusLabel(c.status) : '尚无记录' }}</span>
+              <span class="meta mono">{{ c.success_count }} / {{ c.total_count }}</span>
+            </div>
+            <p v-if="c.error_message" class="form-error">{{ c.error_message }}</p>
+            <pre class="log-box">{{ c.log_text || '暂无日志' }}</pre>
+          </article>
+        </div>
+      </section>
+
       <!-- 流水线状态 -->
       <section class="card reveal" style="margin-top:32px;--reveal-delay:160ms">
-        <div class="sec-mark"><span class="no">02</span><h3>处理流水线</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">03</span><h3>处理流水线</h3><span class="rule"></span></div>
         <div class="pipe-grid" v-if="processing">
           <div class="pipe-item">
             <span class="meta">最近处理</span>
@@ -66,7 +128,7 @@
 
       <!-- 爬虫任务 -->
       <section class="card reveal" style="margin-top:16px;--reveal-delay:220ms">
-        <div class="sec-mark"><span class="no">03</span><h3>爬虫任务</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">04</span><h3>爬虫任务</h3><span class="rule"></span></div>
         <div class="table-wrap" v-if="tasks.length">
           <table class="task-table">
             <thead>
@@ -96,17 +158,53 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
-import { formatTime } from '../format'
+import { crawlerLabel, formatTime } from '../format'
 
 const health = ref(null)
 const processing = ref(null)
 const tasks = ref([])
 const { loading, error, run } = useAsync()
 
+const crawl = ref(null)
+const scheduleMode = ref('hourly')
+const dailyTime = ref('08:00')
+const selected = ref(['bioon', 'globenewswire', 'prnewswire'])
+const formSynced = ref(false)
+const actionError = ref('')
+const actionLoading = ref(false)
+let pollTimer = 0
+
 const checked = computed(() => health.value !== null)
+const locked = computed(() => Boolean(crawl.value?.running))
+const canStart = computed(() => {
+  if (locked.value || actionLoading.value) return false
+  if (!selected.value.length) return false
+  if (scheduleMode.value === 'daily' && !dailyTime.value) return false
+  return true
+})
+const phaseLabel = computed(() => {
+  if (crawl.value?.active) return '本轮进行中'
+  if (crawl.value?.running) return '运行中'
+  return '未启动'
+})
+const phaseClass = computed(() => {
+  if (crawl.value?.active) return 'warn'
+  if (crawl.value?.running) return 'ok'
+  return ''
+})
+const sources = computed(() => {
+  const rows = crawl.value?.available
+  if (rows?.length) return rows.map((row) => ({ key: row.key, label: row.name }))
+  return [
+    { key: 'bioon', label: 'Bioon新闻' },
+    { key: 'globenewswire', label: 'GlobeNewswire新闻' },
+    { key: 'prnewswire', label: 'PrNewswire新闻' },
+  ]
+})
+const crawlerLogs = computed(() => crawl.value?.crawlers || [])
 
 const healthRows = computed(() => {
   const c = health.value?.checks || {}
@@ -140,6 +238,47 @@ const healthRows = computed(() => {
 const statusLabel = (s) => ({ success: '成功', running: '运行中', failed: '失败' }[s] || s)
 const statusClass = (s) => ({ success: 'ok', running: 'warn', failed: 'danger' }[s] || '')
 const fmt = (v) => (v ? formatTime(v) : '尚未执行')
+const sourceLabel = (key) => crawlerLabel(key)
+
+function formatNext(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  if (d.getTime() <= Date.now() + 5000) return '即将执行'
+  return d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function applyConfig(cfg) {
+  if (!cfg) return
+  scheduleMode.value = cfg.schedule_mode || 'hourly'
+  dailyTime.value = cfg.daily_time || '08:00'
+  if (cfg.crawler_keys?.length) selected.value = [...cfg.crawler_keys]
+  else if (!cfg.running) selected.value = sources.value.map((item) => item.key)
+}
+
+function toggleSource(key) {
+  if (locked.value) return
+  if (selected.value.includes(key)) selected.value = selected.value.filter((item) => item !== key)
+  else selected.value = [...selected.value, key]
+}
+
+async function refreshQuiet() {
+  try {
+    const [data, status] = await Promise.all([api.monitor(), api.crawlStatus()])
+    if (data) {
+      health.value = data.health || null
+      processing.value = data.processing || null
+      tasks.value = data.crawler_tasks || []
+    }
+    crawl.value = status
+    if (!formSynced.value || status?.running) {
+      applyConfig(status)
+      formSynced.value = true
+    }
+  } catch {
+    /* 轮询失败时保留当前页面 */
+  }
+}
 
 async function load() {
   const data = await run(() => api.monitor())
@@ -148,8 +287,58 @@ async function load() {
     processing.value = data.processing || null
     tasks.value = data.crawler_tasks || []
   }
+  try {
+    const status = await api.crawlStatus()
+    crawl.value = status
+    if (!formSynced.value || status?.running) {
+      applyConfig(status)
+      formSynced.value = true
+    }
+  } catch (e) {
+    actionError.value = e.message || '采集状态不可用'
+  }
 }
-onMounted(load)
+
+async function startCrawl() {
+  actionError.value = ''
+  actionLoading.value = true
+  try {
+    const status = await api.crawlStart({
+      schedule_mode: scheduleMode.value,
+      daily_time: scheduleMode.value === 'daily' ? dailyTime.value : null,
+      crawler_keys: selected.value,
+    })
+    crawl.value = status
+    applyConfig(status)
+    formSynced.value = true
+    await refreshQuiet()
+  } catch (e) {
+    actionError.value = e.message || '启动失败'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function stopCrawl() {
+  actionError.value = ''
+  actionLoading.value = true
+  try {
+    const status = await api.crawlStop()
+    crawl.value = status
+    applyConfig(status)
+    formSynced.value = true
+  } catch (e) {
+    actionError.value = e.message || '停止失败'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  pollTimer = setInterval(refreshQuiet, 5000)
+})
+onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
 
 <style scoped>
@@ -201,4 +390,32 @@ onMounted(load)
 .task-table tbody tr { transition: background var(--dur-fast); }
 .task-table tbody tr:hover { background: var(--wash); }
 .task-table tbody tr:last-child td { border-bottom: none; }
+
+.crawl-status { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); font-weight: 700; margin-bottom: 8px; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg-btn {
+  background: transparent;
+  color: var(--pine);
+  padding: 8px 14px;
+}
+.seg-btn.on { background: var(--pine); color: var(--paper); }
+.hint { margin: 0 0 16px; }
+.form-error { color: var(--clay); margin: 8px 0; }
+.log-list { display: grid; gap: 12px; margin-top: 20px; }
+.log-card { border-top: 1px solid var(--line); padding-top: 12px; }
+.log-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.log-box {
+  margin: 8px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--wash);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+}
 </style>

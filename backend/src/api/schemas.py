@@ -26,3 +26,31 @@ class ReportExportRequest(BaseModel):
     answer: str
     sources: List[Dict[str, Any]] = []
     fmt: str = "pdf"
+
+
+class CrawlStartRequest(BaseModel):
+    schedule_mode: str
+    daily_time: Optional[str] = None
+    crawler_keys: List[str] = []
+
+
+class LlmProfileWrite(BaseModel):
+    name: str
+    api_key: Optional[str] = None
+    base_url: str
+    chat_model: str
+    embedding_api_key: Optional[str] = None
+    embedding_base_url: str
+    embedding_model: str
+    embedding_dim: int = 1024
+    reranker_api_key: Optional[str] = None
+    reranker_base_url: str
+    reranker_model: str
+    rebuild: bool = False
+
+
+class LlmProfileTest(BaseModel):
+    base_url: str
+    api_key: Optional[str] = None
+    profile_id: Optional[int] = None
+    slot: str = "chat"

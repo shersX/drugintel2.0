@@ -41,6 +41,7 @@ def record_crawler_task(
     total_count: int = 0,
     success_count: int = 0,
     error_message: Optional[str] = None,
+    log_text: Optional[str] = None,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
 ) -> int:
@@ -51,6 +52,7 @@ def record_crawler_task(
             total_count=total_count,
             success_count=success_count,
             error_message=error_message,
+            log_text=log_text,
             start_time=start_time or datetime.utcnow(),
             end_time=end_time or datetime.utcnow(),
         )
@@ -80,6 +82,23 @@ def recent_crawler_tasks(limit: int = 20) -> list[Dict[str, Any]]:
 
 
 def processing_status() -> Dict[str, Any]:
+    """优先读最近一轮 crawl_run，这样 worker 里的结果能出现在 API 进程。"""
+    try:
+        from backend.src.models.crawl import CrawlRun
+
+        with session_scope() as session:
+            run = session.scalar(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(1))
+            if run is not None:
+                stamp = run.finished_at or run.started_at
+                stamp_s = stamp.isoformat() if stamp else None
+                return {
+                    "last_pipeline_at": stamp_s if run.pipeline_stats else None,
+                    "last_pipeline_stats": run.pipeline_stats,
+                    "last_cluster_at": stamp_s if run.cluster_stats else None,
+                    "last_cluster_stats": run.cluster_stats,
+                }
+    except Exception as exc:
+        logger.warning("读取采集轮次失败，回退进程内状态: %s", exc)
     return dict(_PROCESS_STATE)
 
 

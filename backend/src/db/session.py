@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Generator, Iterator
+from typing import Iterator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -49,6 +49,57 @@ def enable_pgvector(engine: Engine | None = None) -> None:
     eng = engine or get_engine()
     with eng.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+
+def vector_column_dim(connection) -> Optional[int]:
+    """news.embedding 的列宽。未限定维度时返回 None。"""
+    typmod = connection.execute(
+        text(
+            """
+            SELECT a.atttypmod
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relname = 'news'
+              AND a.attname = 'embedding'
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            """
+        )
+    ).scalar()
+    if typmod is None or int(typmod) < 1:
+        return None
+    return int(typmod)
+
+
+def rebuild_vector_columns(dim: int, connection) -> None:
+    """清空已有向量，把新闻向量和事件中心改成给定维度，并重建 HNSW 索引。"""
+    width = int(dim)
+    connection.execute(text("DROP INDEX IF EXISTS news_embedding_idx"))
+    connection.execute(text("DROP INDEX IF EXISTS event_centroid_idx"))
+    connection.execute(text("UPDATE news SET embedding = NULL"))
+    connection.execute(text("UPDATE event SET centroid_embedding = NULL"))
+    connection.execute(text(f"ALTER TABLE news ALTER COLUMN embedding TYPE vector({width})"))
+    connection.execute(
+        text(f"ALTER TABLE event ALTER COLUMN centroid_embedding TYPE vector({width})")
+    )
+    connection.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS news_embedding_idx
+            ON news USING hnsw (embedding vector_cosine_ops)
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS event_centroid_idx
+            ON event USING hnsw (centroid_embedding vector_cosine_ops)
+            """
+        )
+    )
 
 
 def create_vector_indexes(engine: Engine | None = None) -> None:

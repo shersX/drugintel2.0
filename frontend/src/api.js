@@ -17,7 +17,14 @@ async function request(path, options = {}) {
     throw new Error(res.status === 500 ? '后端响应异常（请检查服务与数据库连接）' : `服务异常（HTTP ${res.status}）`)
   }
   if (!res.ok || data.code !== 0) {
-    throw new Error(data.message || `HTTP ${res.status}`)
+    const detail = data.detail
+    const message = data.message
+      || (typeof detail === 'string' ? detail : detail?.message)
+      || `HTTP ${res.status}`
+    const err = new Error(message)
+    err.status = res.status
+    err.detail = detail
+    throw err
   }
   return data.data
 }
@@ -34,5 +41,18 @@ export const api = {
   createWatchlist: (body) => request('/api/watchlist', { method: 'POST', body: JSON.stringify(body) }),
   deleteWatchlist: (id) => request(`/api/watchlist/${id}`, { method: 'DELETE' }),
   monitor: () => request('/api/monitor/status'),
+  crawlConfig: () => request('/api/crawl/config'),
+  crawlStatus: () => request('/api/crawl/status'),
+  crawlStart: (body) => request('/api/crawl/start', { method: 'POST', body: JSON.stringify(body) }),
+  crawlStop: () => request('/api/crawl/stop', { method: 'POST' }),
+  llmProfiles: () => request('/api/llm/profiles'),
+  createLlmProfile: (body) => request('/api/llm/profiles', { method: 'POST', body: JSON.stringify(body) }),
+  updateLlmProfile: (id, body) => request(`/api/llm/profiles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteLlmProfile: (id) => request(`/api/llm/profiles/${id}`, { method: 'DELETE' }),
+  activateLlmProfile: (id, rebuild = false) => request(
+    `/api/llm/profiles/${id}/activate?rebuild=${rebuild ? 'true' : 'false'}`,
+    { method: 'POST' },
+  ),
+  testLlmProfile: (body) => request('/api/llm/profiles/test', { method: 'POST', body: JSON.stringify(body) }),
   exportReport: (body) => request('/api/reports/export', { method: 'POST', body: JSON.stringify(body) }),
 }

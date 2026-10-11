@@ -27,7 +27,7 @@ class News(Base, TimestampMixin):
     detail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, unique=True)
     crawler: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     matched_keywords: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    embedding = mapped_column(Vector(1024), nullable=True)
+    embedding = mapped_column(Vector(), nullable=True)
     is_representative: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     event_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("event.id", ondelete="SET NULL"), nullable=True, index=True

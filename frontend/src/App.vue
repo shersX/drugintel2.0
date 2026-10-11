@@ -47,6 +47,7 @@ const navItems = [
   { to: '/chat', label: 'AI 问答' },
   { to: '/alerts', label: '监测订阅' },
   { to: '/monitor', label: '系统监控' },
+  { to: '/settings', label: '模型配置' },
 ]
 
 const now = new Date()

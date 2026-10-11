@@ -27,6 +27,7 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  # 前端在镜像构建时打包，和 API 一起由本服务在 :8000 提供，没有单独的前端容器
   app:
     build: .
     container_name: drugintel-app
@@ -37,6 +38,38 @@ services:
     environment:
       DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
       REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: drugintel-worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
+      REDIS_URL: "redis://redis:6379/0"
+    command: ["celery", "-A", "tasks.celery_app.celery_app", "worker", "-l", "info", "--concurrency", "1"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  beat:
+    build: .
+    container_name: drugintel-beat
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
+      REDIS_URL: "redis://redis:6379/0"
+    command: ["celery", "-A", "tasks.celery_app.celery_app", "beat", "-l", "info"]
     depends_on:
       db:
         condition: service_healthy

@@ -19,3 +19,4 @@ outjson/
 data/
 *.log
 .env
+.agents/

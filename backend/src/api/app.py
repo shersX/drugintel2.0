@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.src.alerts.matcher import (
     create_watchlist,
@@ -18,9 +20,35 @@ from backend.src.alerts.matcher import (
     list_watchlists,
 )
 from backend.src.api.response import fail, ok
-from backend.src.api.schemas import AskRequest, ReportExportRequest, WatchlistCreate
+from backend.src.api.schemas import (
+    AskRequest,
+    CrawlStartRequest,
+    LlmProfileTest,
+    LlmProfileWrite,
+    ReportExportRequest,
+    WatchlistCreate,
+)
 from backend.src.clustering.service import run_clustering
+from backend.src.core.logger import get_logger
+from backend.src.crawl.schedule import (
+    CrawlConfigError,
+    config_payload,
+    start_schedule,
+    status_payload,
+    stop_schedule,
+)
+from backend.src.db.schema import ensure_schema
 from backend.src.db.session import session_scope
+from backend.src.llm.profiles import (
+    DimensionMismatch,
+    LlmProfileError,
+    activate_profile,
+    create_profile,
+    delete_profile,
+    list_profiles,
+    test_connection,
+    update_profile,
+)
 from backend.src.models.event import Event
 from backend.src.models.news import News
 from backend.src.monitor.health import (
@@ -37,7 +65,17 @@ from backend.src.stats.service import (
     overview_stats,
 )
 
-app = FastAPI(title="DrugIntel.ai API", version="1.0.0")
+logger = get_logger("api")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_schema()
+    logger.info("数据库结构已检查")
+    yield
+
+
+app = FastAPI(title="DrugIntel.ai API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -260,6 +298,128 @@ def api_watchlist_delete(watchlist_id: int):
         return ok({"deleted": watchlist_id})
 
 
+@app.post("/api/crawl/start")
+def api_crawl_start(body: CrawlStartRequest):
+    try:
+        return ok(
+            start_schedule(body.schedule_mode, body.daily_time, body.crawler_keys)
+        )
+    except CrawlConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crawl/stop")
+def api_crawl_stop():
+    return ok(stop_schedule())
+
+
+@app.get("/api/crawl/config")
+def api_crawl_config():
+    return ok(config_payload())
+
+
+@app.get("/api/crawl/status")
+def api_crawl_status():
+    return ok(status_payload())
+
+
+@app.get("/api/llm/profiles")
+def api_llm_profiles():
+    return ok(list_profiles())
+
+
+def _llm_http_error(exc: LlmProfileError) -> HTTPException:
+    if isinstance(exc, DimensionMismatch):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": "dimension_mismatch",
+                "current_dim": exc.current_dim,
+                "next_dim": exc.next_dim,
+                "message": str(exc),
+            },
+        )
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/llm/profiles")
+def api_llm_profile_create(body: LlmProfileWrite):
+    try:
+        return ok(
+            create_profile(
+                name=body.name,
+                api_key=body.api_key or "",
+                base_url=body.base_url,
+                chat_model=body.chat_model,
+                embedding_api_key=body.embedding_api_key or "",
+                embedding_base_url=body.embedding_base_url,
+                embedding_model=body.embedding_model,
+                embedding_dim=body.embedding_dim,
+                reranker_api_key=body.reranker_api_key or "",
+                reranker_base_url=body.reranker_base_url,
+                reranker_model=body.reranker_model,
+            )
+        )
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+
+
+@app.post("/api/llm/profiles/test")
+async def api_llm_profile_test(body: LlmProfileTest):
+    try:
+        return ok(
+            await test_connection(
+                base_url=body.base_url,
+                api_key=body.api_key,
+                profile_id=body.profile_id,
+                slot=body.slot,
+            )
+        )
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+
+
+@app.put("/api/llm/profiles/{profile_id}")
+def api_llm_profile_update(profile_id: int, body: LlmProfileWrite):
+    try:
+        return ok(
+            update_profile(
+                profile_id,
+                name=body.name,
+                api_key=body.api_key,
+                base_url=body.base_url,
+                chat_model=body.chat_model,
+                embedding_api_key=body.embedding_api_key,
+                embedding_base_url=body.embedding_base_url,
+                embedding_model=body.embedding_model,
+                embedding_dim=body.embedding_dim,
+                reranker_api_key=body.reranker_api_key,
+                reranker_base_url=body.reranker_base_url,
+                reranker_model=body.reranker_model,
+                rebuild=body.rebuild,
+            )
+        )
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+
+
+@app.delete("/api/llm/profiles/{profile_id}")
+def api_llm_profile_delete(profile_id: int):
+    try:
+        delete_profile(profile_id)
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+    return ok({"deleted": profile_id})
+
+
+@app.post("/api/llm/profiles/{profile_id}/activate")
+def api_llm_profile_activate(profile_id: int, rebuild: bool = Query(False)):
+    try:
+        return ok(activate_profile(profile_id, rebuild=rebuild))
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+
+
 @app.post("/api/reports/export")
 async def api_report_export(body: ReportExportRequest):
     path = await export_report(
@@ -280,5 +440,17 @@ def api_report_download(filename: str):
     return FileResponse(path, filename=path.name)
 
 
+class SPAStaticFiles(StaticFiles):
+    """构建产物里没有的前端路由回退到 index.html。带后缀的静态文件仍返回 404。"""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and "." not in Path(path).name:
+                return await super().get_response("index.html", scope)
+            raise
+
+
 if FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+    app.mount("/", SPAStaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")

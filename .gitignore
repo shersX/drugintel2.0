@@ -18,3 +18,4 @@ outjson/
 .env
 volumes/
 data/
+.agents/
