@@ -161,7 +161,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
-import { crawlerLabel, formatTime } from '../format'
+import { crawlerLabel, crawlerSources, formatTime } from '../format'
 
 const health = ref(null)
 const processing = ref(null)
@@ -171,7 +171,7 @@ const { loading, error, run } = useAsync()
 const crawl = ref(null)
 const scheduleMode = ref('hourly')
 const dailyTime = ref('08:00')
-const selected = ref(['bioon', 'globenewswire', 'prnewswire'])
+const selected = ref(['bioon', 'globenewswire', 'prnewswire', 'pharmcube'])
 const formSynced = ref(false)
 const actionError = ref('')
 const actionLoading = ref(false)
@@ -198,11 +198,7 @@ const phaseClass = computed(() => {
 const sources = computed(() => {
   const rows = crawl.value?.available
   if (rows?.length) return rows.map((row) => ({ key: row.key, label: row.name }))
-  return [
-    { key: 'bioon', label: 'Bioon新闻' },
-    { key: 'globenewswire', label: 'GlobeNewswire新闻' },
-    { key: 'prnewswire', label: 'PrNewswire新闻' },
-  ]
+  return crawlerSources.value
 })
 const crawlerLogs = computed(() => crawl.value?.crawlers || [])
 

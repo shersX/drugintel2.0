@@ -47,10 +47,27 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from './api'
+import { setCrawlerSources } from './format'
 import { clearUser, session } from './session'
+
+watch(
+  () => session.user,
+  async (user) => {
+    if (!user) {
+      setCrawlerSources([])
+      return
+    }
+    try {
+      setCrawlerSources(await api.crawlers())
+    } catch {
+      setCrawlerSources([])
+    }
+  },
+  { immediate: true },
+)
 
 const route = useRoute()
 const router = useRouter()

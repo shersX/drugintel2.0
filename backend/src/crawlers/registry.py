@@ -8,14 +8,15 @@
 import asyncio
 import logging
 import random
-from typing import List, Dict, Callable, Optional, Tuple
+from typing import List, Dict, Callable, Optional, Tuple, Type
 from datetime import datetime
 from backend.src.core.logger import get_logger
+from scrapling.spiders import Spider
 
-# 导入所有爬虫模块
-from backend.src.crawlers.bioon import crawl_bioon_news_async
-from backend.src.crawlers.globenewswire import crawl_globenewswire_async
-from backend.src.crawlers.prnewswire import crawl_prnewswire_async
+from backend.src.crawlers.bioon import BioonSpider
+from backend.src.crawlers.globenewswire import GlobeNewswireSpider
+from backend.src.crawlers.pharmacube import PharmcubeSpider
+from backend.src.crawlers.prnewswire import PrNewswireSpider
 
 logger = get_logger("crawler.registry")
 MAX_RETRY_ATTEMPTS = 3
@@ -77,6 +78,7 @@ def _capture_crawler_logs(crawler_key: str):
         text = "\n".join(lines).strip()
         return text[:_LOG_CHAR_LIMIT]
 
+    finish.lines = lines
     return finish
 USER_AGENT_POOL = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
@@ -100,29 +102,72 @@ def _pick_rotating_user_agent(last_user_agent: Optional[str] = None) -> str:
 CRAWLER_REGISTRY = {
     "bioon": {
         "name": "Bioon新闻",
-        "function": crawl_bioon_news_async,
-        "enabled": True,  # 是否启用该爬虫
+        "function": BioonSpider,
+        "enabled": True,
         "page_count": 1,
         "fetch_details": True,
         "concurrency": 2,
     },
     "globenewswire": {
         "name": "GlobeNewswire新闻",
-        "function": crawl_globenewswire_async,
+        "function": GlobeNewswireSpider,
         "enabled": True,
         "page_count": 1,
         "fetch_details": True,
         "concurrency": 2,
     },
-    "prnewswire":{
+    "prnewswire": {
         "name": "PrNewswire新闻",
-        "function": crawl_prnewswire_async,
+        "function": PrNewswireSpider,
         "enabled": True,
         "page_count": 1,
         "fetch_details": True,
         "concurrency": 2,
-    }
+    },
+    "pharmcube": {
+        "name": "医药魔方新闻",
+        "function": PharmcubeSpider,
+        "enabled": True,
+        "page_count": 1,
+        "fetch_details": True,
+        "concurrency": 2,
+    },
 }
+
+
+class _StatsCapture(logging.Handler):
+    """只收下 Scrapling 收尾统计，避免请求日志占满行数上限。"""
+
+    def __init__(self, lines: List[str]):
+        super().__init__(level=logging.INFO)
+        self.lines = lines
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = record.getMessage()
+        except Exception:
+            return
+        if "items_scraped" not in message:
+            return
+        if len(self.lines) >= _LOG_LINE_LIMIT:
+            return
+        self.lines.append(message)
+
+
+async def _start_spider(spider_cls: Type[Spider], lines: List[str], **kwargs) -> List[Dict]:
+    """在独立线程里调用 Spider.start()，避免占住当前事件循环。"""
+
+    def _run() -> List[Dict]:
+        spider = spider_cls(
+            pages=kwargs["page_count"],
+            fetch_details=kwargs["fetch_details"],
+            concurrency=kwargs["concurrency"],
+            user_agent=kwargs.get("user_agent"),
+        )
+        spider.logger.addHandler(_StatsCapture(lines))
+        return list(spider.start().items)
+
+    return await asyncio.to_thread(_run)
 
 async def _run_crawler_with_retry(
     crawler_key: str,
@@ -149,7 +194,7 @@ async def _run_crawler_with_retry(
                         MAX_RETRY_ATTEMPTS,
                     )
                 logger.info("爬虫 %s 使用 User-Agent: %s", crawler_key, current_user_agent)
-                result = await crawler_func(**current_kwargs)
+                result = await _start_spider(crawler_func, finish_logs.lines, **current_kwargs)
                 if attempt > 1:
                     logger.info("爬虫 %s 在第 %s 次尝试成功", crawler_key, attempt)
                 data = result or []

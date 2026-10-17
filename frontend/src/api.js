@@ -58,6 +58,7 @@ export const api = {
   overview: () => request('/api/stats/overview'),
   trend: () => request('/api/stats/trend'),
   keywords: () => request('/api/stats/keywords'),
+  crawlers: () => request('/api/crawlers'),
   news: (page = 1, { q = '', crawler = '' } = {}) => {
     const params = new URLSearchParams({ page: String(page), page_size: '20' })
     if (q) params.set('q', q)

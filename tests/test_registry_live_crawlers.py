@@ -5,9 +5,9 @@
 
 测试目标：
 1) 清空去重文件，避免增量逻辑导致 0 条新增。
-2) 通过 registry.run_all_crawlers 统一拉起 3 个爬虫。
+2) 通过 registry.run_all_crawlers 统一拉起 4 个爬虫。
 3) 统一参数：page_count=2, fetch_details=True, concurrency=3。
-4) 断言 3 个爬虫均返回非空结果，且包含 title/detail_url。
+4) 断言 4 个爬虫均返回非空结果，且包含 title/detail_url。
 5) 首轮全量抓取；未通过校验的源在后续轮次仅重试该子集（最多共 3 轮校验）。
 6) 校验通过后写入 outjson/results.json。
 """
@@ -29,11 +29,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.src.crawlers.registry import CRAWLER_REGISTRY, run_all_crawlers
 
 
-EXPECTED_CRAWLERS = {"bioon", "globenewswire", "prnewswire"}
+EXPECTED_CRAWLERS = {"bioon", "globenewswire", "prnewswire", "pharmcube"}
 DEDUP_FILES = [
     PROJECT_ROOT / "outjson" / "BioonNews_url.json",
     PROJECT_ROOT / "outjson" / "Globenewswire_url.json",
     PROJECT_ROOT / "outjson" / "Prnewswire_url.json",
+    PROJECT_ROOT / "outjson" / "pharmcube_url.json",
 ]
 RESULTS_JSON = PROJECT_ROOT / "outjson" / "results.json"
 

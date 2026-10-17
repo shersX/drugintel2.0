@@ -261,6 +261,16 @@ def _like_term(value: str) -> str:
     return f"%{escaped}%"
 
 
+@app.get("/api/crawlers")
+def api_crawlers(_actor: Actor = Depends(current_actor)):
+    from backend.src.crawlers.registry import CRAWLER_REGISTRY
+
+    return ok([
+        {"key": key, "name": str(meta.get("name") or key)}
+        for key, meta in CRAWLER_REGISTRY.items()
+    ])
+
+
 @app.get("/api/news")
 def api_news_list(
     page: int = Query(1, ge=1),

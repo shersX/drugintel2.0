@@ -1,14 +1,27 @@
-/** 时间与来源展示工具 */
+/** 时间与来源展示工具。来源名称来自 /api/crawlers。 */
 
-const CRAWLER_LABELS = {
-  bioon: '生物谷',
-  globenewswire: 'GlobeNewswire',
-  prnewswire: 'PR Newswire',
+import { ref } from 'vue'
+
+export const crawlerSources = ref([])
+
+const crawlerLabels = new Map()
+
+export function setCrawlerSources(rows) {
+  const next = []
+  crawlerLabels.clear()
+  for (const row of rows || []) {
+    const key = String(row.key || '').trim()
+    if (!key) continue
+    const label = String(row.name || key)
+    next.push({ key, label })
+    crawlerLabels.set(key.toLowerCase(), label)
+  }
+  crawlerSources.value = next
 }
 
 export function crawlerLabel(crawler) {
   if (!crawler) return '未知来源'
-  return CRAWLER_LABELS[String(crawler).toLowerCase()] || crawler
+  return crawlerLabels.get(String(crawler).toLowerCase()) || crawler
 }
 
 export function formatTime(value) {

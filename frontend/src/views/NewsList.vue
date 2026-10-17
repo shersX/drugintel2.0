@@ -116,13 +116,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
-import { crawlerLabel, formatTime } from '../format'
+import { crawlerLabel, crawlerSources, formatTime } from '../format'
 
-const sources = [
-  { key: 'bioon', label: '生物谷' },
-  { key: 'globenewswire', label: 'GlobeNewswire' },
-  { key: 'prnewswire', label: 'PR Newswire' },
-]
+const sources = crawlerSources
 const items = ref([])
 const page = ref(1)
 const total = ref(0)
