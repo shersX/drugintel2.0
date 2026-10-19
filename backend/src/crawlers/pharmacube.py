@@ -3,7 +3,14 @@ import logging
 from scrapling.fetchers import AsyncDynamicSession
 from scrapling.spiders import Request, Response, Spider
 
-from backend.src.crawlers.scrapling_support import JsonSeen, canonicalize, quiet_item_logs, text
+from backend.src.crawlers.scrapling_support import (
+    JsonSeen,
+    canonicalize,
+    fragment_html,
+    html_to_text,
+    quiet_item_logs,
+    text,
+)
 
 SEEN_FILE = "pharmcube_url.json"
 
@@ -66,7 +73,7 @@ class PharmcubeSpider(Spider):
             if not href:
                 continue
             if href in self.seen:
-                self.logger.info("已跳过 原因=已抓取过 地址=%s", href)
+                self.logger.debug("已跳过 原因=已抓取过 地址=%s", href)
                 continue
             new_count += 1
             if not self.fetch_details:
@@ -91,21 +98,31 @@ class PharmcubeSpider(Spider):
     async def parse_detail(self, response: Response):
         seen_url = response.meta.get("seen_url") or response.url
         self.seen.add(seen_url)
+        content_html = fragment_html(response.css("div.news-detail-page div.content"))
         yield self._item(
             response.meta.get("title", ""),
             response.meta.get("source", ""),
             response.url,
             text(response.css("div.news-detail-page div.desc span.text")),
-            text(response.css("div.news-detail-page div.content")),
+            html_to_text(content_html),
+            content_html,
         )
 
     @staticmethod
-    def _item(title: str, source: str, detail_url: str, publish_time: str, full_text: str) -> dict:
+    def _item(
+        title: str,
+        source: str,
+        detail_url: str,
+        publish_time: str,
+        full_text: str,
+        content_html: str = "",
+    ) -> dict:
         return {
             "title": title,
             "source": source,
             "detail_url": canonicalize(detail_url),
             "publish_time": publish_time,
             "full_text": full_text,
+            "content_html": content_html or None,
             "crawler": "pharmcube",
         }

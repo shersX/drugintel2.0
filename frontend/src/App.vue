@@ -79,20 +79,17 @@ import { authPrompt, closeAuthPrompt, promptCopy } from './authPrompt'
 import { setCrawlerSources } from './format'
 import { clearUser, session } from './session'
 
+async function loadCrawlerSources() {
+  try {
+    setCrawlerSources(await api.crawlers())
+  } catch {
+    setCrawlerSources([])
+  }
+}
+
 watch(
-  () => session.user,
-  async (user) => {
-    if (!user) {
-      setCrawlerSources([])
-      return
-    }
-    try {
-      setCrawlerSources(await api.crawlers())
-    } catch {
-      setCrawlerSources([])
-    }
-  },
-  { immediate: true },
+  () => session.user?.id,
+  () => { loadCrawlerSources() },
 )
 
 const route = useRoute()
@@ -122,7 +119,10 @@ function onKeydown(event) {
   if (event.key === 'Escape' && authPrompt.open) dismissPrompt()
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
+onMounted(() => {
+  loadCrawlerSources()
+  window.addEventListener('keydown', onKeydown)
+})
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 const navItems = computed(() => {
   const items = [

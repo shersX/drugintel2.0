@@ -14,6 +14,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "firecrawl>=4.32.0",
     "httpx>=0.28.1",
+    "jieba>=0.42.1",
     "jinja2>=3.1.0",
     "numpy>=2.0.0",
     "openai>=2.37.0",

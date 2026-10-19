@@ -20,6 +20,8 @@ from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequ
 
 import yaml
 
+from backend.src.crawlers.scrapling_support import plain_full_text
+
 # filter.py 位于 backend/src/processors/，向上 4 级到项目根
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_KEYWORD_CONFIG = PROJECT_ROOT / "config" / "keywords.yaml"
@@ -94,11 +96,32 @@ class KeywordLexicon:
     category_by_canonical: Mapping[str, str]
 
 
+def invalidate_keyword_cache() -> None:
+    """关键词表变更后调用，强制下次重新加载。"""
+    load_keyword_lexicon.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def load_keyword_lexicon(config_path: Optional[str | Path] = None) -> KeywordLexicon:
     """
-    读取关键词 YAML，合并「靶点」「公司」及可选的旧版顶层 `keywords`。
+    优先读数据库 filter_keyword；库空或失败时回退 keywords.yaml。
+    config_path 仅用于 YAML 回退路径覆盖。
     """
+    # 1) DB
+    try:
+        from backend.src.db.session import session_scope
+        from backend.src.processors.keyword_store import lexicon_from_db
+
+        with session_scope() as session:
+            merged, category_by_canonical = lexicon_from_db(session)
+        if merged:
+            return KeywordLexicon(
+                keyword_map=merged, category_by_canonical=category_by_canonical
+            )
+    except Exception:
+        pass
+
+    # 2) YAML 回退
     path = Path(config_path) if config_path else DEFAULT_KEYWORD_CONFIG
     if not path.exists():
         raise FileNotFoundError(f"未找到关键词配置文件: {path}")
@@ -227,7 +250,7 @@ _CATEGORY_KEYS = ("靶点", "公司")
 def _combined_news_text(item: MutableMapping) -> str:
     """匹配用文本：标题 + 正文（不含简介）。"""
     title = item.get("title", "") or ""
-    full_text = item.get("full_text", "") or ""
+    full_text = plain_full_text(item.get("full_text"))
     return f"{title} {full_text}".strip()
 
 

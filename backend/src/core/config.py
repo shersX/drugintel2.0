@@ -136,6 +136,20 @@ class EmbeddingEnvConfig:
 
 
 @dataclass(frozen=True)
+class RagEnvConfig:
+    """RAG 检索后过滤阈值等。"""
+
+    min_relevance_score: float
+
+    @staticmethod
+    def load() -> "RagEnvConfig":
+        # 作用于重排后的 relevance_score（通常约 0~1）；设为 0 可关闭过滤
+        return RagEnvConfig(
+            min_relevance_score=float(os.getenv("RAG_MIN_RELEVANCE_SCORE", "0.25")),
+        )
+
+
+@dataclass(frozen=True)
 class DatabaseEnvConfig:
     url: str
 

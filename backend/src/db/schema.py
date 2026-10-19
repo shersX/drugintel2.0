@@ -29,14 +29,20 @@ def ensure_schema() -> None:
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE crawler_task ADD COLUMN IF NOT EXISTS log_text TEXT"))
+        conn.execute(text("ALTER TABLE news ADD COLUMN IF NOT EXISTS content_html TEXT"))
     _ensure_llm_profile_columns(engine)
     _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
+    _fix_naive_publish_time_as_shanghai(engine)
+    _split_html_content_into_content_html(engine)
+    _ensure_search_tsv(engine)
     try:
         create_vector_indexes(engine)
     except RuntimeError as exc:
         logger.warning("%s（表为空时部分环境可稍后重试）", exc)
     _seed_crawl_config()
+    _seed_rag_and_crawler_settings()
+    _seed_filter_keywords()
     from backend.src.auth.service import bind_watchlist_owners, ensure_first_admin
 
     ensure_first_admin()
@@ -142,6 +148,121 @@ def _ensure_default_vector_dim(engine, dim: int = 1024) -> None:
         rebuild_vector_columns(dim, conn)
 
 
+def _fix_naive_publish_time_as_shanghai(engine) -> None:
+    """历史数据曾把北京墙钟当成 UTC 写入 timestamptz，启动时一次性纠偏。"""
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.news')")).scalar() is None:
+            return
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS schema_patch (
+                    name TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        existed = conn.execute(
+            text("SELECT 1 FROM schema_patch WHERE name = :name"),
+            {"name": "news_publish_time_shanghai_v1"},
+        ).first()
+        if existed is not None:
+            return
+        result = conn.execute(
+            text(
+                """
+                UPDATE news
+                SET publish_time = (publish_time AT TIME ZONE 'UTC')
+                                    AT TIME ZONE 'Asia/Shanghai'
+                WHERE publish_time IS NOT NULL
+                """
+            )
+        )
+        conn.execute(
+            text("INSERT INTO schema_patch(name) VALUES (:name)"),
+            {"name": "news_publish_time_shanghai_v1"},
+        )
+        logger.info("已纠偏新闻发布时间时区 %s 条", result.rowcount)
+
+
+def _split_html_content_into_content_html(engine) -> None:
+    """上次误把消毒 HTML 写入 content 的行，拆到 content_html 并把 content 还原为纯文本。"""
+    from backend.src.crawlers.scrapling_support import html_to_text, looks_like_html
+    from backend.src.models.news import News
+
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.news')")).scalar() is None:
+            return
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS schema_patch (
+                    name TEXT PRIMARY KEY,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+        existed = conn.execute(
+            text("SELECT 1 FROM schema_patch WHERE name = :name"),
+            {"name": "news_content_html_split_v1"},
+        ).first()
+        if existed is not None:
+            return
+
+    changed = 0
+    with session_scope() as session:
+        rows = list(
+            session.scalars(
+                select(News).where(
+                    News.content.is_not(None),
+                    News.content != "",
+                )
+            ).all()
+        )
+        for row in rows:
+            raw = row.content or ""
+            if not looks_like_html(raw):
+                continue
+            if not (row.content_html or "").strip():
+                row.content_html = raw
+            row.content = html_to_text(raw)
+            changed += 1
+        session.flush()
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO schema_patch(name) VALUES (:name) ON CONFLICT DO NOTHING"),
+            {"name": "news_content_html_split_v1"},
+        )
+    logger.info("已拆分 content→content_html %s 条", changed)
+
+
+def _ensure_search_tsv(engine) -> None:
+    """为 BM25 召回增加 search_tsv + GIN，并回填空值行。"""
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.news')")).scalar() is None:
+            return
+        conn.execute(text("ALTER TABLE news ADD COLUMN IF NOT EXISTS search_tsv tsvector"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_news_search_tsv ON news USING GIN (search_tsv)"
+            )
+        )
+    try:
+        with session_scope() as session:
+            from backend.src.search.bm25 import invalidate_bm25_stats
+            from backend.src.search.tsv import backfill_search_tsv
+
+            n = backfill_search_tsv(session)
+            if n:
+                invalidate_bm25_stats()
+                logger.info("search_tsv 回填完成 %s 条", n)
+    except Exception as exc:
+        logger.warning("search_tsv 回填跳过: %s", exc)
+
+
 def _seed_crawl_config() -> None:
     with session_scope() as session:
         session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SEED_LOCK})
@@ -156,3 +277,27 @@ def _seed_crawl_config() -> None:
                 )
             )
             logger.info("已写入默认采集配置（未启动）")
+
+
+def _seed_rag_and_crawler_settings() -> None:
+    try:
+        with session_scope() as session:
+            from backend.src.crawlers.settings_store import seed_crawler_settings
+            from backend.src.rag.settings import get_or_create_rag_config
+
+            get_or_create_rag_config(session)
+            seed_crawler_settings(session)
+    except Exception as exc:
+        logger.warning("初始化 rag/crawler 配置跳过: %s", exc)
+
+
+def _seed_filter_keywords() -> None:
+    try:
+        with session_scope() as session:
+            from backend.src.processors.keyword_store import import_keywords_from_yaml
+
+            n = import_keywords_from_yaml(session, only_if_empty=True)
+            if n:
+                logger.info("过滤关键词首次导入 %s 条", n)
+    except Exception as exc:
+        logger.warning("过滤关键词导入跳过: %s", exc)

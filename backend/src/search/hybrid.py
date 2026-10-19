@@ -1,13 +1,14 @@
-"""混合检索：向量 + 全文，RRF 融合。"""
+"""混合检索：余弦向量 + BM25，RRF 融合。"""
 
 from __future__ import annotations
 
+import os
 from typing import Dict, List, Tuple
 
 from sqlalchemy.orm import Session
 
 from backend.src.models.news import News
-from backend.src.search.fulltext import fulltext_search
+from backend.src.search.bm25 import bm25_search
 from backend.src.search.vector import vector_search
 
 
@@ -33,19 +34,35 @@ def rrf_fuse(
     return [(docs[i], s) for i, s in ordered]
 
 
+def _hybrid_weights() -> Tuple[float, float]:
+    vector_w = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.6"))
+    bm25_w = float(os.getenv("HYBRID_BM25_WEIGHT", "0.4"))
+    total = vector_w + bm25_w
+    if total <= 0:
+        return 0.6, 0.4
+    return vector_w / total, bm25_w / total
+
+
 def hybrid_search(
     session: Session,
     query: str,
     query_embedding: List[float],
     *,
     top_k: int = 10,
-    vector_weight: float = 0.6,
-    text_weight: float = 0.4,
+    vector_weight: float | None = None,
+    text_weight: float | None = None,
 ) -> List[Tuple[News, float]]:
+    """
+    余弦相似度（摘要 1024 维）+ BM25，RRF 融合。
+    text_weight 兼容旧参数名，含义为 BM25 权重。
+    """
+    default_v, default_b = _hybrid_weights()
+    vw = default_v if vector_weight is None else float(vector_weight)
+    bw = default_b if text_weight is None else float(text_weight)
     vector_hits = vector_search(session, query_embedding, top_k=top_k * 2)
-    text_hits = fulltext_search(session, query, top_k=top_k * 2)
+    bm25_hits = bm25_search(session, query, top_k=top_k * 2)
     fused = rrf_fuse(
-        [vector_hits, text_hits],
-        weights=[vector_weight, text_weight],
+        [vector_hits, bm25_hits],
+        weights=[vw, bw],
     )
     return fused[:top_k]

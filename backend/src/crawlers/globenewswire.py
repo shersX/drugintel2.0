@@ -7,7 +7,8 @@ from backend.src.crawlers.scrapling_support import (
     JsonSeen,
     canonicalize,
     et_to_beijing,
-    joined_text,
+    fragment_html,
+    html_to_text,
     quiet_item_logs,
     text,
 )
@@ -63,7 +64,7 @@ class GlobeNewswireSpider(Spider):
             if not href:
                 continue
             if href in self.seen:
-                self.logger.info("已跳过 原因=已抓取过 地址=%s", href)
+                self.logger.debug("已跳过 原因=已抓取过 地址=%s", href)
                 continue
             new_count += 1
             if not self.fetch_details:
@@ -85,9 +86,7 @@ class GlobeNewswireSpider(Spider):
 
     async def parse_detail(self, response: Response):
         body = response.css("div.main-body-container")
-        full_text = joined_text(body[0].css("p")) if body else ""
-        if not full_text:
-            full_text = text(body)
+        content_html = fragment_html(body) if body else ""
         seen_url = response.meta.get("seen_url") or response.url
         self.seen.add(seen_url)
         yield self._item(
@@ -95,16 +94,25 @@ class GlobeNewswireSpider(Spider):
             text(response.css("span.article-source a")) or response.meta.get("source", ""),
             response.url,
             et_to_beijing(text(response.css("span.article-published")), TIME_PATTERN),
-            full_text,
+            html_to_text(content_html),
+            content_html,
         )
 
     @staticmethod
-    def _item(title: str, source: str, detail_url: str, publish_time: str, full_text: str) -> dict:
+    def _item(
+        title: str,
+        source: str,
+        detail_url: str,
+        publish_time: str,
+        full_text: str,
+        content_html: str = "",
+    ) -> dict:
         return {
             "title": title,
             "source": source,
             "detail_url": canonicalize(detail_url),
             "publish_time": publish_time,
             "full_text": full_text,
+            "content_html": content_html or None,
             "crawler": "globenewswire",
         }

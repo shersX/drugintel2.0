@@ -25,15 +25,28 @@
     <template v-for="(m, i) in messages" :key="i">
       <div class="msg" :class="m.role">
         <div class="bubble">
-          <div v-if="m.role === 'user'" class="answer">{{ m.content }}</div>
-          <div v-else-if="m.content" class="answer">{{ m.content }}</div>
+          <div v-if="m.role === 'user'" class="answer plain">{{ m.content }}</div>
+          <div
+            v-else-if="m.content"
+            class="answer md"
+            v-html="renderMarkdown(m.content, m.sources)"
+          />
 
           <div v-if="m.sources?.length" class="sources">
             <div class="sources-head">检索来源</div>
-            <div v-for="s in m.sources" :key="s.id" class="source-card">
-              <router-link :to="`/news/${s.id}`" class="source-main">
+            <div
+              v-for="(s, si) in m.sources"
+              :id="`cite-${i}-${si + 1}`"
+              :key="`${s.id || 's'}-${si}`"
+              class="source-card"
+            >
+              <router-link
+                v-if="s.id != null"
+                :to="`/news/${s.id}`"
+                class="source-main"
+              >
                 <div class="source-top">
-                  <span class="source-id">[#{{ s.id }}]</span>
+                  <span class="source-id">[{{ si + 1 }}]</span>
                   <span class="source-title">{{ s.title }}</span>
                   <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
                 </div>
@@ -41,6 +54,13 @@
                   <span class="score-fill" :style="{ width: Math.round((s.score || 0) * 100) + '%' }"></span>
                 </div>
               </router-link>
+              <div v-else class="source-main">
+                <div class="source-top">
+                  <span class="source-id">[{{ si + 1 }}]</span>
+                  <span class="source-title">{{ s.title }}</span>
+                  <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
+                </div>
+              </div>
               <a
                 v-if="s.detail_url"
                 class="source-origin"
@@ -70,7 +90,10 @@
 </template>
 
 <script setup>
+import { marked } from 'marked'
 import { nextTick, ref, watch } from 'vue'
+
+marked.setOptions({ breaks: true, gfm: true })
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
@@ -82,12 +105,51 @@ defineEmits(['suggest', 'export'])
 
 const root = ref(null)
 
+function escapeAttr(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function linkCitations(html, sources) {
+  if (!sources?.length) return html
+  return html.replace(/\[(\d+)\]/g, (match, num) => {
+    const idx = Number(num) - 1
+    const source = sources[idx]
+    if (!source) return match
+    const title = escapeAttr(source.title || `来源 ${num}`)
+    if (source.id != null && source.id !== '') {
+      return `<a class="cite-ref" href="/news/${source.id}" title="${title}" target="_blank" rel="noopener noreferrer">[${num}]</a>`
+    }
+    if (source.detail_url) {
+      return `<a class="cite-ref" href="${escapeAttr(source.detail_url)}" title="${title}" target="_blank" rel="noopener noreferrer">[${num}]</a>`
+    }
+    return match
+  })
+}
+
+function renderMarkdown(text, sources = []) {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  const html = marked.parse(raw, { async: false })
+  return linkCitations(html, sources)
+}
+
 async function scrollDown() {
   await nextTick()
   root.value?.scrollTo({ top: root.value.scrollHeight, behavior: 'smooth' })
 }
 
-watch(() => [props.messages.length, props.loading], () => { scrollDown() })
+watch(
+  () => [
+    props.messages.length,
+    props.loading,
+    props.messages.map((m) => m.content?.length || 0).join(','),
+  ],
+  () => { scrollDown() },
+)
 
 defineExpose({ scrollDown })
 </script>
@@ -151,7 +213,109 @@ defineExpose({ scrollDown })
   color: var(--ink);
   box-shadow: var(--shadow-sm);
 }
-.answer { white-space: pre-wrap; }
+.answer.plain { white-space: pre-wrap; }
+.answer.md :deep(p) { margin: 0 0 0.7em; }
+.answer.md :deep(p:last-child) { margin-bottom: 0; }
+.answer.md :deep(h1),
+.answer.md :deep(h2),
+.answer.md :deep(h3),
+.answer.md :deep(h4) {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0.9em 0 0.4em;
+}
+.answer.md :deep(h1:first-child),
+.answer.md :deep(h2:first-child),
+.answer.md :deep(h3:first-child),
+.answer.md :deep(h4:first-child) { margin-top: 0; }
+.answer.md :deep(h1) { font-size: 1.2em; }
+.answer.md :deep(h2) { font-size: 1.12em; }
+.answer.md :deep(h3),
+.answer.md :deep(h4) { font-size: 1.05em; }
+.answer.md :deep(ul),
+.answer.md :deep(ol) {
+  margin: 0.35em 0 0.75em;
+  padding-left: 1.35em;
+}
+.answer.md :deep(li) { margin: 0.25em 0; }
+.answer.md :deep(ul ul),
+.answer.md :deep(ol ol),
+.answer.md :deep(ul ol),
+.answer.md :deep(ol ul) { margin: 0.2em 0 0.35em; }
+.answer.md :deep(strong),
+.answer.md :deep(b) { font-weight: 700; }
+.answer.md :deep(em),
+.answer.md :deep(i) { font-style: italic; }
+.answer.md :deep(a) {
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.answer.md :deep(a:hover) { color: var(--moss); }
+.answer.md :deep(a.cite-ref) {
+  display: inline;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: 700;
+  color: var(--pine);
+  background: color-mix(in srgb, var(--lime) 22%, transparent);
+  border-radius: 4px;
+  padding: 0 0.28em;
+  margin: 0 0.08em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.answer.md :deep(a.cite-ref:hover) {
+  color: var(--paper);
+  background: var(--pine);
+}
+.answer.md :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--wash);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.answer.md :deep(pre) {
+  margin: 0.6em 0;
+  padding: var(--sp-3);
+  overflow-x: auto;
+  background: var(--wash);
+  border-radius: var(--r-sm);
+  font-size: 0.88em;
+}
+.answer.md :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.answer.md :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 0.9em;
+  border-left: 3px solid var(--moss);
+  color: var(--ink-soft);
+}
+.answer.md :deep(hr) {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 0.9em 0;
+}
+.answer.md :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.7em 0;
+  font-size: 0.92em;
+}
+.answer.md :deep(th),
+.answer.md :deep(td) {
+  border: 1px solid var(--rule);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+.answer.md :deep(th) {
+  background: var(--wash);
+  font-weight: 700;
+}
 
 .sources { margin-top: var(--sp-4); border-top: 1px dashed var(--rule-strong); padding-top: var(--sp-3); }
 .sources-head {

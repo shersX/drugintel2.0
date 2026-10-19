@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.models.base import Base, TimestampMixin
@@ -19,6 +19,7 @@ class News(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    content_html: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     publish_time: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -28,6 +29,7 @@ class News(Base, TimestampMixin):
     crawler: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     matched_keywords: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     embedding = mapped_column(Vector(), nullable=True)
+    search_tsv = mapped_column(TSVECTOR, nullable=True)
     is_representative: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     event_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("event.id", ondelete="SET NULL"), nullable=True, index=True

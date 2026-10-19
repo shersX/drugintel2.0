@@ -203,7 +203,6 @@ async function send() {
     const data = await api.ask({
       query: q,
       conversation_id: conversationId.value || null,
-      top_k: 5,
     })
     const cid = data.conversation_id || data.session_id || conversationId.value
     conversationId.value = cid

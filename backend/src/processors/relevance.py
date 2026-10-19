@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Mapping, MutableMapping, Optional, Protocol, runtime_checkable
 import asyncio
 from backend.src.core.logger import get_logger
+from backend.src.crawlers.scrapling_support import plain_full_text
 from backend.src.llm.client import SiliconFlowClient
 
 logger = get_logger("processors.relevance")
@@ -84,7 +85,7 @@ async def check_single_relevance_async(item, llm: SiliconFlowClient):
     """
 
     title = item["title"]
-    content = item["full_text"]
+    content = plain_full_text(item.get("full_text"))
     system_prompt = _relevance_prompt_text()
     user_prompt = f"新闻标题：{title}\n新闻内容：{content}"
 

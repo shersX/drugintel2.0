@@ -48,12 +48,17 @@ from backend.src.api.schemas import (
     AskRequest,
     ChatLimitUpdate,
     ConversationRename,
+    CrawlerSettingUpdate,
     CrawlStartRequest,
+    FilterKeywordCreate,
+    FilterKeywordUpdate,
+    KeywordReimportRequest,
     LlmProfileTest,
     LlmProfileWrite,
     LoginRequest,
     PasswordReset,
     ProfileUpdate,
+    RagConfigUpdate,
     ReportExportRequest,
     UserCreate,
     WatchlistCreate,
@@ -67,6 +72,7 @@ from backend.src.crawl.schedule import (
     status_payload,
     stop_schedule,
 )
+from backend.src.db.crud.news import format_publish_time_cn
 from backend.src.db.schema import ensure_schema
 from backend.src.db.session import session_scope
 from backend.src.llm.profiles import (
@@ -265,7 +271,8 @@ def _like_term(value: str) -> str:
 
 
 @app.get("/api/crawlers")
-def api_crawlers(_actor: Actor = Depends(current_actor)):
+def api_crawlers():
+    """来源筛选项（公开）。含已禁用爬虫，便于过滤历史入库数据。"""
     from backend.src.crawlers.registry import CRAWLER_REGISTRY
 
     return ok([
@@ -332,7 +339,7 @@ def api_news_list(
                 "abstract": n.abstract,
                 "source": n.source,
                 "crawler": n.crawler,
-                "publish_time": str(n.publish_time) if n.publish_time else None,
+                "publish_time": format_publish_time_cn(n.publish_time),
                 "detail_url": n.detail_url,
                 "event_id": n.event_id,
                 "is_representative": n.is_representative,
@@ -362,10 +369,11 @@ def api_news_detail(news_id: int):
                 "id": news.id,
                 "title": news.title,
                 "content": news.content,
+                "content_html": news.content_html,
                 "abstract": news.abstract,
                 "source": news.source,
                 "crawler": news.crawler,
-                "publish_time": str(news.publish_time) if news.publish_time else None,
+                "publish_time": format_publish_time_cn(news.publish_time),
                 "detail_url": news.detail_url,
                 "matched_keywords": news.matched_keywords,
                 "event_id": news.event_id,
@@ -524,7 +532,6 @@ async def ws_chat(websocket: WebSocket):
             async for event in ask_stream(
                 query,
                 user_id=actor.id,
-                top_k=int(payload.get("top_k") or 5),
                 conversation_id=payload.get("conversation_id"),
                 session_id=payload.get("session_id"),
             ):
@@ -699,6 +706,196 @@ def api_llm_profile_activate(profile_id: int, rebuild: bool = Query(False), acto
         raise _llm_http_error(exc) from exc
     record_audit(actor_id=actor.id, action="llm_activate", target=f"llm:{profile_id}")
     return ok(payload)
+
+
+@app.get("/api/admin/rag-config")
+def api_admin_rag_config_get(_actor: Actor = Depends(admin_actor)):
+    from backend.src.rag.settings import get_or_create_rag_config, rag_config_to_dict
+
+    with session_scope() as session:
+        row = get_or_create_rag_config(session)
+        return ok(rag_config_to_dict(row))
+
+
+@app.put("/api/admin/rag-config")
+def api_admin_rag_config_put(body: RagConfigUpdate, actor: Actor = Depends(admin_actor)):
+    from backend.src.rag.settings import rag_config_to_dict, update_rag_settings
+
+    with session_scope() as session:
+        row = update_rag_settings(
+            session,
+            top_k=body.top_k,
+            min_relevance_score=body.min_relevance_score,
+        )
+        payload = rag_config_to_dict(row)
+    record_audit(
+        actor_id=actor.id,
+        action="rag_config_update",
+        target="rag_config",
+        detail=f"top_k={payload['top_k']},min_score={payload['min_relevance_score']}",
+    )
+    return ok(payload)
+
+
+@app.get("/api/admin/crawlers")
+def api_admin_crawlers_list(_actor: Actor = Depends(admin_actor)):
+    from backend.src.crawlers.settings_store import list_crawler_settings, seed_crawler_settings
+
+    with session_scope() as session:
+        seed_crawler_settings(session)
+        return ok(list_crawler_settings(session))
+
+
+@app.put("/api/admin/crawlers/{crawler_key}")
+def api_admin_crawler_update(
+    crawler_key: str,
+    body: CrawlerSettingUpdate,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.crawlers.settings_store import update_crawler_setting
+
+    try:
+        with session_scope() as session:
+            payload = update_crawler_setting(
+                session,
+                crawler_key,
+                enabled=body.enabled,
+                page_count=body.page_count,
+                concurrency=body.concurrency,
+                fetch_details=body.fetch_details,
+            )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    record_audit(
+        actor_id=actor.id,
+        action="crawler_setting_update",
+        target=f"crawler:{crawler_key}",
+        detail=str(payload),
+    )
+    return ok(payload)
+
+
+@app.get("/api/admin/keywords")
+def api_admin_keywords_list(
+    category: Optional[str] = None,
+    q: str = "",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _actor: Actor = Depends(admin_actor),
+):
+    from backend.src.processors.keyword_store import list_keywords
+
+    with session_scope() as session:
+        return ok(list_keywords(session, category=category, q=q, page=page, page_size=page_size))
+
+
+@app.post("/api/admin/keywords")
+def api_admin_keywords_create(body: FilterKeywordCreate, actor: Actor = Depends(admin_actor)):
+    from backend.src.processors.filter import invalidate_keyword_cache
+    from backend.src.processors.keyword_store import create_keyword, keyword_to_dict
+
+    try:
+        with session_scope() as session:
+            row = create_keyword(
+                session,
+                category=body.category,
+                canonical=body.canonical,
+                aliases=body.aliases,
+            )
+            payload = keyword_to_dict(row)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    invalidate_keyword_cache()
+    record_audit(
+        actor_id=actor.id,
+        action="keyword_create",
+        target=f"keyword:{payload['id']}",
+        detail=payload["canonical"],
+    )
+    return ok(payload)
+
+
+@app.put("/api/admin/keywords/{keyword_id}")
+def api_admin_keywords_update(
+    keyword_id: int,
+    body: FilterKeywordUpdate,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.processors.filter import invalidate_keyword_cache
+    from backend.src.processors.keyword_store import keyword_to_dict, update_keyword
+
+    try:
+        with session_scope() as session:
+            row = update_keyword(
+                session,
+                keyword_id,
+                category=body.category,
+                canonical=body.canonical,
+                aliases=body.aliases,
+            )
+            payload = keyword_to_dict(row)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    invalidate_keyword_cache()
+    record_audit(
+        actor_id=actor.id,
+        action="keyword_update",
+        target=f"keyword:{keyword_id}",
+        detail=payload["canonical"],
+    )
+    return ok(payload)
+
+
+@app.delete("/api/admin/keywords/{keyword_id}")
+def api_admin_keywords_delete(keyword_id: int, actor: Actor = Depends(admin_actor)):
+    from backend.src.processors.filter import invalidate_keyword_cache
+    from backend.src.processors.keyword_store import delete_keyword
+
+    try:
+        with session_scope() as session:
+            delete_keyword(session, keyword_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    invalidate_keyword_cache()
+    record_audit(
+        actor_id=actor.id,
+        action="keyword_delete",
+        target=f"keyword:{keyword_id}",
+    )
+    return ok({"deleted": keyword_id})
+
+
+@app.post("/api/admin/keywords/reimport")
+def api_admin_keywords_reimport(
+    body: KeywordReimportRequest,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.processors.filter import invalidate_keyword_cache
+    from backend.src.processors.keyword_store import import_keywords_from_yaml
+    from backend.src.models.filter_keyword import FilterKeyword
+    from sqlalchemy import delete, func, select
+
+    with session_scope() as session:
+        count = session.scalar(select(func.count()).select_from(FilterKeyword)) or 0
+        if count > 0 and not body.confirm_overwrite:
+            raise HTTPException(
+                status_code=400,
+                detail="表非空；需 confirm_overwrite=true 才会清空并重新从 YAML 导入",
+            )
+        if count > 0 and body.confirm_overwrite:
+            session.execute(delete(FilterKeyword))
+            session.flush()
+        inserted = import_keywords_from_yaml(session, only_if_empty=False)
+    invalidate_keyword_cache()
+    record_audit(
+        actor_id=actor.id,
+        action="keyword_reimport",
+        target="filter_keyword",
+        detail=f"inserted={inserted}",
+    )
+    return ok({"inserted": inserted})
 
 
 @app.post("/api/reports/export")

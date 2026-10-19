@@ -1,12 +1,9 @@
 <template>
   <div>
     <header class="ed-head reveal">
+      <div class="ed-kicker">Newsroom · 情报目录</div>
       <div class="head-row">
-        <div>
-          <div class="ed-kicker">Newsroom · 情报目录</div>
-          <h1 class="ed-title">情报流</h1>
-          <p class="ed-lede">经关键词命中、LLM 相关性过滤与聚类归事件的多源新闻，按期次排列。</p>
-        </div>
+        <h1 class="ed-title">情报流</h1>
         <button class="secondary" :disabled="loading" @click="reload">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" :class="{ spinning: loading }">
@@ -31,9 +28,10 @@
           type="button"
           class="picker-btn"
           :aria-expanded="sourceOpen"
-          @click="sourceOpen = !sourceOpen; dateOpen = false"
+          @click.stop="toggleSource"
         >{{ sourceLabel }}</button>
-        <div v-if="sourceOpen" class="picker-menu" role="group" aria-label="来源">
+        <div v-if="sourceOpen" class="picker-menu" role="group" aria-label="来源" @click.stop>
+          <p v-if="!sources.length" class="picker-empty">暂无来源选项</p>
           <label v-for="src in sources" :key="src.key" class="picker-option">
             <input v-model="selectedSources" type="checkbox" :value="src.key" />
             {{ src.label }}
@@ -45,7 +43,7 @@
           type="button"
           class="picker-btn"
           :aria-expanded="dateOpen"
-          @click="toggleDate"
+          @click.stop="toggleDate"
         >{{ dateLabel }}</button>
         <div v-if="dateOpen" class="picker-menu cal" :class="{ up: dateOpensUp }" role="dialog" aria-label="更新时间">
           <div class="cal-head">
@@ -115,10 +113,10 @@
           <span class="entry-meta">
             <b>{{ crawlerLabel(n.crawler) }}</b>
             <i class="dot"></i>
-            <span class="time">{{ formatTime(n.publish_time) }}</span>
+            <span class="time">{{ formatDateTimeMinute(n.publish_time) }}</span>
           </span>
           <h3 class="entry-title">{{ n.title }}</h3>
-          <p class="entry-abstract">{{ n.abstract || '暂无摘要' }}</p>
+          <p class="entry-abstract">{{ plainAbstract(n.abstract) || '暂无摘要' }}</p>
         </span>
         <span class="entry-go" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -145,7 +143,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../api'
 import { session } from '../session'
 import { useAsync } from '../composables'
-import { crawlerLabel, crawlerSources, formatTime } from '../format'
+import { crawlerLabel, crawlerSources, formatDateTimeMinute, plainAbstract, setCrawlerSources } from '../format'
 
 const sources = crawlerSources
 const items = ref([])
@@ -173,11 +171,25 @@ const filtered = computed(() => Boolean(
 ))
 const sourceLabel = computed(() => {
   if (!selectedSources.value.length) return '来源'
-  return sources
+  return sources.value
     .filter((src) => selectedSources.value.includes(src.key))
     .map((src) => src.label)
     .join('、')
 })
+
+function toggleSource() {
+  dateOpen.value = false
+  sourceOpen.value = !sourceOpen.value
+}
+
+async function ensureSources() {
+  if (sources.value.length) return
+  try {
+    setCrawlerSources(await api.crawlers())
+  } catch {
+    /* 保持空，下拉里会提示 */
+  }
+}
 const dateLabel = computed(() => {
   if (dateFrom.value && dateTo.value) return `${dateFrom.value} 至 ${dateTo.value}`
   if (dateFrom.value) return `${dateFrom.value} 起`
@@ -295,6 +307,7 @@ function go(p) {
 }
 
 onMounted(() => {
+  ensureSources()
   load()
   document.addEventListener('click', onDocumentClick)
 })
@@ -334,15 +347,21 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 }
 .picker-menu {
   position: absolute;
-  z-index: 5;
+  z-index: 30;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 180px;
+  min-width: 240px;
   padding: 8px;
   background: var(--surface);
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-md);
   box-shadow: 0 12px 28px -16px rgba(28, 36, 32, 0.45);
+}
+.picker-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--ink-mute);
+  font-size: var(--fs-sm);
 }
 .picker-option {
   display: flex;
@@ -351,6 +370,8 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   padding: 6px 8px;
   color: var(--ink-soft);
   font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
 }
 .cal { left: auto; right: 0; width: 280px; padding: 12px; }
 .cal.up { top: auto; bottom: calc(100% + 6px); }
@@ -432,9 +453,10 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 .head-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
 }
+.head-row .ed-title { margin: 0; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

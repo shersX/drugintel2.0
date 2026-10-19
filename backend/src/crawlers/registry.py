@@ -24,6 +24,25 @@ _LOG_LINE_LIMIT = 150
 _LOG_CHAR_LIMIT = 8000
 
 
+def format_crawler_error(exc: BaseException | str) -> str:
+    """把常见运行环境错误翻成可读中文，便于监控展示。"""
+    raw = str(exc)
+    lower = raw.lower()
+    if (
+        "executable doesn't exist" in lower
+        or "ms-playwright" in lower
+        or ("chromium" in lower and "chrome.exe" in lower)
+    ):
+        return (
+            "未找到 Playwright Chromium 浏览器。"
+            "请在项目根目录执行：uv run playwright install chromium"
+            f"（原始错误：{raw}）"
+        )
+    if isinstance(exc, BaseException):
+        return f"{type(exc).__name__}: {raw}"
+    return raw
+
+
 class CrawlerBatch(dict):
     """爬虫结果字典，并带上各源失败原因与日志。"""
 
@@ -127,7 +146,7 @@ CRAWLER_REGISTRY = {
     "pharmcube": {
         "name": "医药魔方新闻",
         "function": PharmcubeSpider,
-        "enabled": True,
+        "enabled": False,
         "page_count": 1,
         "fetch_details": True,
         "concurrency": 2,
@@ -208,9 +227,8 @@ async def _run_crawler_with_retry(
                     crawler_key,
                     attempt,
                     MAX_RETRY_ATTEMPTS,
-                    str(exc),
+                    format_crawler_error(exc),
                 )
-                logger.error("异常类型: %s", type(exc).__name__)
                 if attempt < MAX_RETRY_ATTEMPTS:
                     delay_seconds = 2 ** (attempt - 1)
                     logger.warning("爬虫 %s 将在 %s 秒后重试", crawler_key, delay_seconds)
@@ -238,7 +256,12 @@ async def run_all_crawlers(
         CrawlerBatch: 每个爬虫名称对应的新闻列表，附带 failures 与 logs
     """
     if crawler_configs is None:
-        crawler_configs = CRAWLER_REGISTRY
+        try:
+            from backend.src.crawlers.settings_store import merged_crawler_registry
+
+            crawler_configs = merged_crawler_registry()
+        except Exception:
+            crawler_configs = CRAWLER_REGISTRY
     
     # 筛选启用的爬虫
     enabled_crawlers = {
@@ -303,10 +326,9 @@ async def run_all_crawlers(
 
     for name, result in zip(crawler_names, results):
         if isinstance(result, Exception):
-            error_msg = str(result)
+            error_msg = format_crawler_error(result)
             logger.error("爬虫 %s 执行失败: %s", name, error_msg)
-            logger.error("异常类型: %s", type(result).__name__)
-            failed_crawlers[name] = f"{type(result).__name__}: {error_msg}"
+            failed_crawlers[name] = error_msg
             batch[name] = []
             batch.failures[name] = failed_crawlers[name]
         else:
@@ -314,9 +336,9 @@ async def run_all_crawlers(
             if log_text:
                 batch.logs[name] = log_text
             if error is not None:
-                error_msg = str(error)
-                failed_crawlers[name] = f"{type(error).__name__}: {error_msg}"
-                logger.error("爬虫 %s 重试 %s 次后仍失败", name, MAX_RETRY_ATTEMPTS)
+                error_msg = format_crawler_error(error)
+                failed_crawlers[name] = error_msg
+                logger.error("爬虫 %s 重试 %s 次后仍失败: %s", name, MAX_RETRY_ATTEMPTS, error_msg)
                 batch[name] = []
                 batch.failures[name] = failed_crawlers[name]
             else:

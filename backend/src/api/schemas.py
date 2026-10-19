@@ -11,7 +11,35 @@ class AskRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
     conversation_id: Optional[str] = None
-    top_k: int = 5
+    top_k: Optional[int] = None  # 已废弃：服务端以管理员 rag_config 为准
+
+
+class RagConfigUpdate(BaseModel):
+    top_k: int = Field(10, ge=1, le=50)
+    min_relevance_score: float = Field(0.25, ge=0.0, le=1.0)
+
+
+class CrawlerSettingUpdate(BaseModel):
+    enabled: bool = True
+    page_count: int = Field(1, ge=1, le=50)
+    concurrency: int = Field(2, ge=1, le=20)
+    fetch_details: bool = True
+
+
+class FilterKeywordCreate(BaseModel):
+    category: str
+    canonical: str = Field(..., min_length=1, max_length=200)
+    aliases: List[str] = []
+
+
+class FilterKeywordUpdate(BaseModel):
+    category: Optional[str] = None
+    canonical: Optional[str] = Field(None, min_length=1, max_length=200)
+    aliases: Optional[List[str]] = None
+
+
+class KeywordReimportRequest(BaseModel):
+    confirm_overwrite: bool = False
 
 
 class ConversationRename(BaseModel):

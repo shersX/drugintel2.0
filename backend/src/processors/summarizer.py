@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, MutableMapping, Optional, Sequence
 
 from backend.src.core.logger import get_logger
+from backend.src.crawlers.scrapling_support import plain_full_text
 from backend.src.llm.client import SiliconFlowClient
 
 logger = get_logger("processors.summarizer")
@@ -32,7 +33,7 @@ async def summarize_one(
 ) -> MutableMapping:
     """为单条新闻写入 abstract 字段；失败时用 description 或正文截断兜底。"""
     title = str(item.get("title") or "")
-    content = str(item.get("full_text") or "")[:content_max_chars]
+    content = plain_full_text(item.get("full_text"))[:content_max_chars]
     system_prompt = _default_summary_prompt()
     user_prompt = f"新闻标题：{title}\n新闻内容：{content}"
     messages = [

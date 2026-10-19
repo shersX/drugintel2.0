@@ -185,11 +185,32 @@ def release_lock(token: str) -> None:
     _redis().eval(_RELEASE_LUA, 1, LOCK_KEY, token)
 
 
-def _available() -> List[Dict[str, str]]:
-    return [
-        {"key": key, "name": str(meta.get("name") or key)}
-        for key, meta in CRAWLER_REGISTRY.items()
-    ]
+def _available() -> List[Dict[str, Any]]:
+    """可选爬虫列表：合并 DB 后仅返回 enabled=true 的源。"""
+    try:
+        from backend.src.crawlers.settings_store import list_crawler_settings
+
+        with session_scope() as session:
+            items = list_crawler_settings(session)
+        return [
+            {
+                "key": item["crawler_key"],
+                "name": item["name"],
+                "enabled": True,
+            }
+            for item in items
+            if item.get("enabled", True)
+        ]
+    except Exception:
+        return [
+            {
+                "key": key,
+                "name": str(meta.get("name") or key),
+                "enabled": True,
+            }
+            for key, meta in CRAWLER_REGISTRY.items()
+            if meta.get("enabled", True)
+        ]
 
 
 def _run_dict(run: Optional[CrawlRun]) -> Optional[Dict[str, Any]]:
@@ -418,7 +439,10 @@ async def _execute(keys: List[str]) -> Dict[str, Any]:
     from backend.src.monitor.health import record_crawler_task
     from backend.src.processors.pipeline import run_processing_pipeline
 
-    configs = {key: CRAWLER_REGISTRY[key] for key in keys if key in CRAWLER_REGISTRY}
+    from backend.src.crawlers.settings_store import merged_crawler_registry
+
+    merged = merged_crawler_registry()
+    configs = {key: merged[key] for key in keys if key in merged}
     if not configs:
         return {"status": "failed", "error": "没有可运行的爬虫"}
 

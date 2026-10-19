@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, MutableMapping, Sequence
 
 from backend.src.core.logger import get_logger
+from backend.src.crawlers.scrapling_support import plain_full_text
 from backend.src.db.crud.news import fetch_existing_titles, upsert_news_items
 from backend.src.db.session import session_scope
 from backend.src.processors.deduplicator import deduplicate_by_title
@@ -45,7 +46,7 @@ async def run_processing_pipeline(
 ) -> Dict[str, Any]:
     """
     完整处理链路：
-    关键词过滤 → 扁平化 → 有效性 → LLM 相关性 → 标题去重 → 摘要 → 向量 → 入库
+    关键词过滤 → 扁平化 → 有效性 → 标题去重 → LLM 相关性 → 摘要 → 向量 → 入库
 
     Returns:
         统计与最终 items（含 abstract / embedding）
@@ -62,30 +63,33 @@ async def run_processing_pipeline(
         logger.warning("无有效新闻，流水线结束")
         return {"stats": stats, "items": []}
 
-    related = await isrelated_for_item(valid)
-    stats["after_relevance"] = len(related)
-
     existing_titles: List[str] = []
     if persist:
         try:
             with session_scope() as session:
-                titles = [str(i.get("title") or "") for i in related]
+                titles = [str(i.get("title") or "") for i in valid]
                 existing_titles = fetch_existing_titles(session, titles)
         except Exception as e:
             logger.warning("查询库内标题失败，仅做批内去重: %s", e)
 
-    deduped = deduplicate_by_title(related, existing_titles=existing_titles)
+    deduped = deduplicate_by_title(valid, existing_titles=existing_titles)
     stats["after_dedup"] = len(deduped)
+    if not deduped:
+        logger.warning("去重后无新闻，流水线结束")
+        return {"stats": stats, "items": []}
+
+    related = await isrelated_for_item(deduped)
+    stats["after_relevance"] = len(related)
 
     if skip_summary:
-        for item in deduped:
+        for item in related:
             item.setdefault(
                 "abstract",
-                (item.get("description") or str(item.get("full_text") or "")[:200]),
+                (item.get("description") or plain_full_text(item.get("full_text"))[:200]),
             )
-        summarized = list(deduped)
+        summarized = list(related)
     else:
-        summarized = await summarize_items(deduped)
+        summarized = await summarize_items(related)
     stats["after_summary"] = len(summarized)
 
     if skip_embedding:

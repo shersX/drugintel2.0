@@ -4,6 +4,7 @@ from backend.src.models.account import AppUser, AuditLog, ChatUsage, ReportFile,
 from backend.src.models.base import Base
 from backend.src.models.chat import ChatConversation, ChatMessage
 from backend.src.models.crawl import CrawlConfig, CrawlRun
+from backend.src.models.crawler_setting import CrawlerSetting
 from backend.src.models.entities import (
     Company,
     CrawlerTask,
@@ -12,8 +13,10 @@ from backend.src.models.entities import (
     Watchlist,
 )
 from backend.src.models.event import Event
+from backend.src.models.filter_keyword import FilterKeyword
 from backend.src.models.llm_profile import LlmProfile
 from backend.src.models.news import News
+from backend.src.models.rag_config import RagConfig
 
 __all__ = [
     "Base",
@@ -26,6 +29,9 @@ __all__ = [
     "CrawlerTask",
     "CrawlConfig",
     "CrawlRun",
+    "CrawlerSetting",
+    "FilterKeyword",
+    "RagConfig",
     "LlmProfile",
     "AppUser",
     "UserSession",

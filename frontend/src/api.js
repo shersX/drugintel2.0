@@ -96,5 +96,28 @@ export const api = {
     { method: 'POST' },
   ),
   testLlmProfile: (body) => request('/api/llm/profiles/test', { method: 'POST', body: JSON.stringify(body) }),
+  ragConfig: () => request('/api/admin/rag-config'),
+  updateRagConfig: (body) => request('/api/admin/rag-config', { method: 'PUT', body: JSON.stringify(body) }),
+  adminCrawlers: () => request('/api/admin/crawlers'),
+  updateAdminCrawler: (key, body) => request(`/api/admin/crawlers/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+  adminKeywords: ({ category = '', q = '', page = 1, page_size = 20 } = {}) => {
+    const params = new URLSearchParams({ page: String(page), page_size: String(page_size) })
+    if (category) params.set('category', category)
+    if (q) params.set('q', q)
+    return request(`/api/admin/keywords?${params}`)
+  },
+  createAdminKeyword: (body) => request('/api/admin/keywords', { method: 'POST', body: JSON.stringify(body) }),
+  updateAdminKeyword: (id, body) => request(`/api/admin/keywords/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+  deleteAdminKeyword: (id) => request(`/api/admin/keywords/${id}`, { method: 'DELETE' }),
+  reimportAdminKeywords: (confirm_overwrite = false) => request('/api/admin/keywords/reimport', {
+    method: 'POST',
+    body: JSON.stringify({ confirm_overwrite }),
+  }),
   exportReport: (body) => request('/api/reports/export', { method: 'POST', body: JSON.stringify(body) }),
 }

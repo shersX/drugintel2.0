@@ -10,7 +10,6 @@ from backend.src.models.news import News
 from backend.src.processors.embedding import SiliconFlowEmbeddingClient
 from backend.src.rag.intent import Intent, IntentResult, classify_intent
 from backend.src.search.hybrid import hybrid_search
-from backend.src.search.vector import vector_search
 
 
 async def retrieve_for_query(
@@ -26,8 +25,5 @@ async def retrieve_for_query(
 
     client = embedding_client or SiliconFlowEmbeddingClient.from_env()
     q_emb = await client.embed_one(query)
-    if intent.intent in {Intent.NEWS_QUERY, Intent.COMPARE}:
-        hits = hybrid_search(session, query, q_emb, top_k=top_k)
-    else:
-        hits = vector_search(session, q_emb, top_k=top_k)
+    hits = hybrid_search(session, query, q_emb, top_k=top_k)
     return intent, hits

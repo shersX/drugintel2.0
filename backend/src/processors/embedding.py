@@ -10,6 +10,7 @@ import aiohttp
 
 from backend.src.core.config import EmbeddingEnvConfig, LLMEnvConfig
 from backend.src.core.logger import get_logger
+from backend.src.crawlers.scrapling_support import plain_full_text
 
 logger = get_logger("processors.embedding")
 
@@ -127,7 +128,7 @@ def _text_for_embed(item: MutableMapping) -> str:
     abstract = str(item.get("abstract") or "").strip()
     if abstract:
         return f"{title}\n{abstract}"
-    content = str(item.get("full_text") or "")[:2000]
+    content = plain_full_text(item.get("full_text"))[:2000]
     return f"{title}\n{content}".strip()
 
 

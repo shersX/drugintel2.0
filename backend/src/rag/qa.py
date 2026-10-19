@@ -16,6 +16,8 @@ from backend.src.rag.generator import generate_answer, generate_answer_stream
 from backend.src.rag.intent import IntentResult
 from backend.src.rag.reranker import rerank
 from backend.src.rag.retriever import retrieve_for_query
+from backend.src.rag.settings import load_rag_settings
+from backend.src.rag.threshold import filter_by_relevance
 
 
 @dataclass
@@ -35,14 +37,21 @@ def _resolve_conversation_id(
     return (conversation_id or session_id or "").strip() or None
 
 
+def _resolve_top_k(top_k: Optional[int] = None) -> int:
+    """以管理员配置为准；忽略客户端传入。"""
+    settings = load_rag_settings()
+    return settings.top_k
+
+
 async def ask(
     query: str,
     *,
     user_id: int,
-    top_k: int = 5,
+    top_k: Optional[int] = None,
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> AskResult:
+    resolved_k = _resolve_top_k(top_k)
     cid_hint = _resolve_conversation_id(
         conversation_id=conversation_id, session_id=session_id
     )
@@ -52,8 +61,9 @@ async def ask(
         )
         cid = conv.id
         history = get_history_messages(session, conversation_id=cid, limit=40)
-        intent, hits = await retrieve_for_query(session, query, top_k=top_k * 2)
-        hits = await rerank(query, hits, top_k=top_k)
+        intent, hits = await retrieve_for_query(session, query, top_k=resolved_k * 2)
+        hits = await rerank(query, hits, top_k=resolved_k)
+        hits = filter_by_relevance(hits)
         sources = [
             {
                 "id": n.id,
@@ -71,7 +81,7 @@ async def ask(
             conversation_id=cid,
             role="assistant",
             content=answer,
-            sources=sources,
+            sources=sources or None,
         )
         touch_conversation(session, conversation=conv, title_from_query=query)
     return AskResult(
@@ -87,11 +97,12 @@ async def ask_stream(
     query: str,
     *,
     user_id: int,
-    top_k: int = 5,
+    top_k: Optional[int] = None,
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
     """先 yield meta，再 yield token，最后 yield done。"""
+    resolved_k = _resolve_top_k(top_k)
     cid_hint = _resolve_conversation_id(
         conversation_id=conversation_id, session_id=session_id
     )
@@ -101,8 +112,9 @@ async def ask_stream(
         )
         cid = conv.id
         history = get_history_messages(session, conversation_id=cid, limit=40)
-        intent, hits = await retrieve_for_query(session, query, top_k=top_k * 2)
-        hits = await rerank(query, hits, top_k=top_k)
+        intent, hits = await retrieve_for_query(session, query, top_k=resolved_k * 2)
+        hits = await rerank(query, hits, top_k=resolved_k)
+        hits = filter_by_relevance(hits)
         sources = [
             {
                 "id": n.id,
@@ -131,7 +143,7 @@ async def ask_stream(
             conversation_id=cid,
             role="assistant",
             content=answer,
-            sources=sources,
+            sources=sources or None,
         )
         touch_conversation(session, conversation=conv, title_from_query=query)
     yield {"type": "done", "session_id": cid, "conversation_id": cid, "answer": answer}

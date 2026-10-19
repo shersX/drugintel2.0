@@ -4,7 +4,16 @@ import re
 from scrapling.fetchers import FetcherSession
 from scrapling.spiders import Request, Response, Spider
 
-from backend.src.crawlers.scrapling_support import JsonSeen, canonicalize, joined_text, quiet_item_logs, text
+from bs4 import BeautifulSoup
+
+from backend.src.crawlers.scrapling_support import (
+    JsonSeen,
+    canonicalize,
+    html_to_text,
+    quiet_item_logs,
+    sanitize_html,
+    text,
+)
 
 SOURCE_RE = re.compile(
     r"^来源:(?P<source>.*?)\s+(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<time>\d{2}:\d{2})$"
@@ -61,7 +70,7 @@ class BioonSpider(Spider):
             if not href:
                 continue
             if href in self.seen:
-                self.logger.info("已跳过 原因=已抓取过 地址=%s", href)
+                self.logger.debug("已跳过 原因=已抓取过 地址=%s", href)
                 continue
             new_count += 1
             if not self.fetch_details:
@@ -87,34 +96,43 @@ class BioonSpider(Spider):
         source = matched.group("source").strip() if matched else ""
         published_at = f"{matched.group('date')} {matched.group('time')}" if matched else ""
         body = response.css('div[style*="303a4e"]')
-        paragraphs = []
+        content_html = ""
         if body:
-            for node in body[0].css("p"):
-                style = (node.attrib.get("style") or "").lower()
+            soup = BeautifulSoup(str(body[0].html_content), "html.parser")
+            for node in soup.find_all("p"):
+                style = (node.get("style") or "").lower()
                 if "text-align" in style and "center" in style:
-                    continue
-                paragraphs.append(node)
-        full_text = joined_text(paragraphs) or text(body)
+                    node.decompose()
+            content_html = sanitize_html(str(soup))
+        full_text = html_to_text(content_html)
         title = text(response.css("h1")) or response.meta.get("title", "")
         seen_url = response.meta.get("seen_url") or response.url
         if source == "网络":
             self.seen.add(seen_url)
-            self.logger.info("已跳过 原因=作者为网络 标题=%s 地址=%s", title, seen_url)
+            self.logger.debug("已跳过 原因=作者为网络 标题=%s 地址=%s", title, seen_url)
             return
-        if not full_text:
+        if not full_text.strip():
             self.seen.add(seen_url)
-            self.logger.info("已跳过 原因=正文为空 标题=%s 地址=%s", title, seen_url)
+            self.logger.debug("已跳过 原因=正文为空 标题=%s 地址=%s", title, seen_url)
             return
         self.seen.add(seen_url)
-        yield self._item(title, source, response.url, published_at, full_text)
+        yield self._item(title, source, response.url, published_at, full_text, content_html)
 
     @staticmethod
-    def _item(title: str, source: str, detail_url: str, publish_time: str, full_text: str) -> dict:
+    def _item(
+        title: str,
+        source: str,
+        detail_url: str,
+        publish_time: str,
+        full_text: str,
+        content_html: str = "",
+    ) -> dict:
         return {
             "title": title,
             "source": source,
             "detail_url": canonicalize(detail_url),
             "publish_time": publish_time,
             "full_text": full_text,
+            "content_html": content_html or None,
             "crawler": "bioon",
         }
