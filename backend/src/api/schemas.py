@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 class AskRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     top_k: int = 5
+
+
+class ConversationRename(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
 
 
 class WatchlistCreate(BaseModel):

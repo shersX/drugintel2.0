@@ -23,7 +23,8 @@ async function request(path, options = {}) {
   } catch {
     throw new Error(res.status === 500 ? '后端响应异常（请检查服务与数据库连接）' : `服务异常（HTTP ${res.status}）`)
   }
-  if (res.status === 401 && !path.startsWith('/api/auth/login')) on401()
+  const anonymousProbe = path.startsWith('/api/auth/login') || path.startsWith('/api/auth/me')
+  if (res.status === 401 && !anonymousProbe) on401()
   if (!res.ok || data.code !== 0) {
     const detail = data.detail
     const message = data.message
@@ -59,15 +60,25 @@ export const api = {
   trend: () => request('/api/stats/trend'),
   keywords: () => request('/api/stats/keywords'),
   crawlers: () => request('/api/crawlers'),
-  news: (page = 1, { q = '', crawler = '' } = {}) => {
+  news: (page = 1, { q = '', crawlers = [], dateFrom = '', dateTo = '' } = {}) => {
     const params = new URLSearchParams({ page: String(page), page_size: '20' })
     if (q) params.set('q', q)
-    if (crawler) params.set('crawler', crawler)
+    for (const key of crawlers) params.append('crawlers', key)
+    if (dateFrom) params.set('date_from', dateFrom)
+    if (dateTo) params.set('date_to', dateTo)
     return request(`/api/news?${params}`)
   },
   newsDetail: (id) => request(`/api/news/${id}`),
   events: () => request('/api/events'),
   ask: (body) => request('/api/chat/ask', { method: 'POST', body: JSON.stringify(body) }),
+  conversations: (limit = 50) => request(`/api/chat/conversations?limit=${limit}`),
+  createConversation: () => request('/api/chat/conversations', { method: 'POST' }),
+  conversationDetail: (id) => request(`/api/chat/conversations/${id}`),
+  renameConversation: (id, title) => request(`/api/chat/conversations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  }),
+  deleteConversation: (id) => request(`/api/chat/conversations/${id}`, { method: 'DELETE' }),
   watchlist: () => request('/api/watchlist'),
   createWatchlist: (body) => request('/api/watchlist', { method: 'POST', body: JSON.stringify(body) }),
   deleteWatchlist: (id) => request(`/api/watchlist/${id}`, { method: 'DELETE' }),

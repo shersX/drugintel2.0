@@ -2,6 +2,7 @@
 
 from backend.src.models.account import AppUser, AuditLog, ChatUsage, ReportFile, UserSession
 from backend.src.models.base import Base
+from backend.src.models.chat import ChatConversation, ChatMessage
 from backend.src.models.crawl import CrawlConfig, CrawlRun
 from backend.src.models.entities import (
     Company,
@@ -31,4 +32,6 @@ __all__ = [
     "AuditLog",
     "ChatUsage",
     "ReportFile",
+    "ChatConversation",
+    "ChatMessage",
 ]

@@ -24,28 +24,53 @@
       <p v-if="error" class="form-error">{{ error }}</p>
     </section>
 
-    <section class="list">
-      <article v-for="item in items" :key="item.id" class="card user-card">
-        <div>
-          <strong>{{ item.display_name }}</strong>
-          <span class="pill" :class="item.status === 'active' ? 'ok' : ''">{{ item.status === 'active' ? '启用' : '已停用' }}</span>
-          <span class="pill">{{ item.role === 'admin' ? '管理员' : '用户' }}</span>
-          <div class="meta">{{ item.email }}</div>
-        </div>
-        <label class="limit">每日问答
-          <input v-model.number="item.daily_chat_limit" type="number" min="0" max="10000" />
-        </label>
-        <div class="actions">
-          <button type="button" class="secondary" @click="saveLimit(item)">保存上限</button>
-          <button type="button" class="secondary" @click="resetPassword(item)">重置密码</button>
-          <button type="button" class="ghost" @click="kick(item)">踢下线</button>
-          <button
-            type="button"
-            class="ghost danger-ghost"
-            @click="toggle(item)"
-          >{{ item.status === 'active' ? '停用' : '启用' }}</button>
-        </div>
-      </article>
+    <section class="card list">
+      <div class="table-wrap" v-if="items.length">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>显示名</th>
+              <th>邮箱</th>
+              <th>角色</th>
+              <th>状态</th>
+              <th>每日问答上限</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in items" :key="item.id">
+              <td>{{ item.display_name }}</td>
+              <td class="meta">{{ item.email }}</td>
+              <td>{{ item.role === 'admin' ? '管理员' : '用户' }}</td>
+              <td>
+                <span class="pill" :class="item.status === 'active' ? 'ok' : ''">
+                  {{ item.status === 'active' ? '启用' : '已停用' }}
+                </span>
+              </td>
+              <td>
+                <input
+                  v-model.number="item.daily_chat_limit"
+                  class="limit"
+                  type="number"
+                  min="0"
+                  max="10000"
+                />
+              </td>
+              <td>
+                <div class="actions">
+                  <button type="button" class="secondary" @click="saveLimit(item)">保存上限</button>
+                  <button type="button" class="secondary" @click="resetPassword(item)">重置密码</button>
+                  <button type="button" class="ghost" @click="kick(item)">踢下线</button>
+                  <button type="button" class="ghost danger-ghost" @click="toggle(item)">
+                    {{ item.status === 'active' ? '停用' : '启用' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="empty-note">暂无用户</p>
     </section>
   </div>
 </template>
@@ -136,10 +161,35 @@ label {
   font-weight: 700;
 }
 .form-error { color: var(--clay); }
-.list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
-.user-card { display: grid; gap: 12px; }
+.list { margin-top: 20px; }
+.table-wrap { overflow-x: auto; }
+.user-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.user-table th {
+  text-align: left;
+  color: var(--ink-mute);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--ink);
+  white-space: nowrap;
+}
+.user-table td {
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.user-table tbody tr { transition: background var(--dur-fast); }
+.user-table tbody tr:hover { background: var(--wash); }
+.user-table tbody tr:last-child td { border-bottom: none; }
 .meta { color: var(--ink-mute); font-size: var(--fs-sm); }
-.pill { margin-left: 8px; }
-.limit { max-width: 160px; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.limit { width: 96px; }
+.actions { display: flex; flex-wrap: nowrap; gap: 8px; }
+.empty-note { color: var(--ink-mute); margin: 0; }
 </style>

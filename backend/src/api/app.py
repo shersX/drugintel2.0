@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +47,7 @@ from backend.src.api.response import fail, ok
 from backend.src.api.schemas import (
     AskRequest,
     ChatLimitUpdate,
+    ConversationRename,
     CrawlStartRequest,
     LlmProfileTest,
     LlmProfileWrite,
@@ -233,25 +236,25 @@ def api_monitor_status(_actor: Actor = Depends(admin_actor)):
 
 
 @app.get("/api/stats/overview")
-def api_stats_overview(_actor: Actor = Depends(current_actor)):
+def api_stats_overview():
     with session_scope() as session:
         return ok(overview_stats(session))
 
 
 @app.get("/api/stats/stages")
-def api_stats_stages(_actor: Actor = Depends(current_actor)):
+def api_stats_stages():
     with session_scope() as session:
         return ok(development_stage_stats(session))
 
 
 @app.get("/api/stats/trend")
-def api_stats_trend(days: int = Query(14, ge=1, le=90), _actor: Actor = Depends(current_actor)):
+def api_stats_trend(days: int = Query(14, ge=1, le=90)):
     with session_scope() as session:
         return ok(news_trend_stats(session, days=days))
 
 
 @app.get("/api/stats/keywords")
-def api_stats_keywords(limit: int = Query(20, ge=1, le=100), _actor: Actor = Depends(current_actor)):
+def api_stats_keywords(limit: int = Query(20, ge=1, le=100)):
     with session_scope() as session:
         return ok(hot_keywords_stats(session, limit=limit))
 
@@ -271,20 +274,47 @@ def api_crawlers(_actor: Actor = Depends(current_actor)):
     ])
 
 
+_NEWS_CRAWLERS = {"bioon", "globenewswire", "prnewswire", "pharmcube"}
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def _shanghai_day_start(value: str) -> datetime:
+    try:
+        day = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD") from exc
+    return datetime.combine(day, time.min, tzinfo=_SHANGHAI)
+
+
 @app.get("/api/news")
 def api_news_list(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     crawler: Optional[str] = None,
+    crawlers: Optional[list[str]] = Query(None),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     q: Optional[str] = None,
-    _actor: Actor = Depends(current_actor),
 ):
     from sqlalchemy import func
 
+    keys = [item.strip().lower() for item in (crawlers or []) if item and item.strip()]
+    if not keys and crawler and crawler.strip():
+        keys = [crawler.strip().lower()]
+    unknown = [item for item in keys if item not in _NEWS_CRAWLERS]
+    if unknown:
+        raise HTTPException(status_code=400, detail="未知来源")
+    start = _shanghai_day_start(date_from) if date_from else None
+    end = _shanghai_day_start(date_to) + timedelta(days=1) if date_to else None
+
     with session_scope() as session:
         base = select(News)
-        if crawler:
-            base = base.where(News.crawler == crawler)
+        if keys:
+            base = base.where(News.crawler.in_(keys))
+        if start is not None:
+            base = base.where(News.publish_time >= start)
+        if end is not None:
+            base = base.where(News.publish_time < end)
         term = (q or "").strip()
         if term:
             like = _like_term(term)
@@ -313,7 +343,7 @@ def api_news_list(
 
 
 @app.get("/api/news/{news_id}")
-def api_news_detail(news_id: int, _actor: Actor = Depends(current_actor)):
+def api_news_detail(news_id: int):
     with session_scope() as session:
         news = session.get(News, news_id)
         if news is None:
@@ -346,7 +376,7 @@ def api_news_detail(news_id: int, _actor: Actor = Depends(current_actor)):
 
 
 @app.get("/api/events")
-def api_events(page: int = 1, page_size: int = 20, _actor: Actor = Depends(current_actor)):
+def api_events(page: int = 1, page_size: int = 20):
     with session_scope() as session:
         stmt = select(Event).order_by(Event.updated_at.desc())
         rows = session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
@@ -369,16 +399,97 @@ def api_cluster_run(_actor: Actor = Depends(admin_actor)):
     return ok(run_clustering())
 
 
+@app.get("/api/chat/conversations")
+def api_chat_conversations(actor: Actor = Depends(current_actor), limit: int = Query(50, ge=1, le=100)):
+    from backend.src.db.crud.chat import conversation_to_dict, list_conversations
+
+    with session_scope() as session:
+        rows = list_conversations(session, user_id=actor.id, limit=limit)
+        return ok([conversation_to_dict(r) for r in rows])
+
+
+@app.post("/api/chat/conversations")
+def api_chat_conversation_create(actor: Actor = Depends(current_actor)):
+    from backend.src.db.crud.chat import conversation_to_dict, create_conversation
+
+    with session_scope() as session:
+        row = create_conversation(session, user_id=actor.id)
+        return ok(conversation_to_dict(row))
+
+
+@app.get("/api/chat/conversations/{conversation_id}")
+def api_chat_conversation_detail(conversation_id: str, actor: Actor = Depends(current_actor)):
+    from backend.src.db.crud.chat import (
+        conversation_to_dict,
+        get_conversation_for_user,
+        list_messages,
+        message_to_dict,
+    )
+
+    with session_scope() as session:
+        row = get_conversation_for_user(
+            session, conversation_id=conversation_id, user_id=actor.id
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        messages = list_messages(session, conversation_id=row.id)
+        return ok(
+            {
+                **conversation_to_dict(row),
+                "messages": [message_to_dict(m) for m in messages],
+            }
+        )
+
+
+@app.patch("/api/chat/conversations/{conversation_id}")
+def api_chat_conversation_rename(
+    conversation_id: str,
+    body: ConversationRename,
+    actor: Actor = Depends(current_actor),
+):
+    from backend.src.db.crud.chat import conversation_to_dict, rename_conversation
+
+    with session_scope() as session:
+        row = rename_conversation(
+            session,
+            conversation_id=conversation_id,
+            user_id=actor.id,
+            title=body.title,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        return ok(conversation_to_dict(row))
+
+
+@app.delete("/api/chat/conversations/{conversation_id}")
+def api_chat_conversation_delete(conversation_id: str, actor: Actor = Depends(current_actor)):
+    from backend.src.db.crud.chat import delete_conversation
+
+    with session_scope() as session:
+        if not delete_conversation(
+            session, conversation_id=conversation_id, user_id=actor.id
+        ):
+            raise HTTPException(status_code=404, detail="conversation not found")
+        return ok({"deleted": conversation_id})
+
+
 @app.post("/api/chat/ask")
 async def api_chat_ask(body: AskRequest, actor: Actor = Depends(current_actor)):
     try:
         consume_chat_quota(actor.id)
     except QuotaError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
-    result = await ask(body.query, top_k=body.top_k, session_id=body.session_id)
+    result = await ask(
+        body.query,
+        user_id=actor.id,
+        top_k=body.top_k,
+        conversation_id=body.conversation_id,
+        session_id=body.session_id,
+    )
     return ok(
         {
             "session_id": result.session_id,
+            "conversation_id": result.conversation_id,
             "intent": result.intent.intent.value,
             "answer": result.answer,
             "sources": result.sources,
@@ -412,7 +523,9 @@ async def ws_chat(websocket: WebSocket):
                 continue
             async for event in ask_stream(
                 query,
+                user_id=actor.id,
                 top_k=int(payload.get("top_k") or 5),
+                conversation_id=payload.get("conversation_id"),
                 session_id=payload.get("session_id"),
             ):
                 await websocket.send_json(event)

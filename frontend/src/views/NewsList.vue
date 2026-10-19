@@ -26,27 +26,55 @@
         @keydown.enter="applySearch"
       />
       <button class="secondary" :disabled="loading" @click="applySearch">搜索</button>
-      <div class="seg">
+      <div class="picker" ref="sourcePicker">
         <button
           type="button"
-          class="seg-btn"
-          :class="{ on: !crawler }"
-          @click="pickCrawler('')"
-        >全部</button>
+          class="picker-btn"
+          :aria-expanded="sourceOpen"
+          @click="sourceOpen = !sourceOpen; dateOpen = false"
+        >{{ sourceLabel }}</button>
+        <div v-if="sourceOpen" class="picker-menu" role="group" aria-label="来源">
+          <label v-for="src in sources" :key="src.key" class="picker-option">
+            <input v-model="selectedSources" type="checkbox" :value="src.key" />
+            {{ src.label }}
+          </label>
+        </div>
+      </div>
+      <div class="picker" ref="datePicker">
         <button
-          v-for="src in sources"
-          :key="src.key"
           type="button"
-          class="seg-btn"
-          :class="{ on: crawler === src.key }"
-          @click="pickCrawler(src.key)"
-        >{{ src.label }}</button>
+          class="picker-btn"
+          :aria-expanded="dateOpen"
+          @click="toggleDate"
+        >{{ dateLabel }}</button>
+        <div v-if="dateOpen" class="picker-menu cal" :class="{ up: dateOpensUp }" role="dialog" aria-label="更新时间">
+          <div class="cal-head">
+            <button type="button" class="cal-nav" aria-label="上个月" @click="shiftMonth(-1)">‹</button>
+            <span class="cal-title">{{ viewYear }} 年 {{ viewMonth }} 月</span>
+            <button type="button" class="cal-nav" aria-label="下个月" @click="shiftMonth(1)">›</button>
+          </div>
+          <div class="cal-week">
+            <span v-for="day in weekdays" :key="day">{{ day }}</span>
+          </div>
+          <div class="cal-grid">
+            <button
+              v-for="(cell, index) in calendarCells"
+              :key="index"
+              type="button"
+              class="cal-day"
+              :class="dayClass(cell)"
+              :disabled="!cell"
+              @click="cell && pickDay(cell)"
+            >{{ cell ? cell.getDate() : '' }}</button>
+          </div>
+          <button type="button" class="cal-clear" @click="clearDates">清除</button>
+        </div>
       </div>
     </div>
 
     <div v-if="error" class="card empty">
-      <div class="empty-title">加载失败</div>
-      <p>{{ error }}</p>
+      <div class="empty-title">暂时无法加载</div>
+      <p>请稍后重试。</p>
       <button class="secondary" @click="reload">重试</button>
     </div>
 
@@ -69,8 +97,8 @@
         <path d="M8 9h7M8 13h7" />
       </svg>
       <div class="empty-title">{{ filtered ? '没有符合条件的新闻' : '暂无新闻' }}</div>
-      <p v-if="filtered">换一个关键词或来源再试。</p>
-      <p v-else>到<router-link to="/monitor">系统监控</router-link>选择爬虫并启动采集，处理完成后会出现在这里。</p>
+      <p v-if="filtered">换一个关键词、来源或时间再试。</p>
+      <p v-else-if="session.user?.role === 'admin'">到<router-link to="/monitor">系统监控</router-link>选择爬虫并启动采集，处理完成后会出现在这里。</p>
     </div>
 
     <!-- 目录式条目 -->
@@ -113,8 +141,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../api'
+import { session } from '../session'
 import { useAsync } from '../composables'
 import { crawlerLabel, crawlerSources, formatTime } from '../format'
 
@@ -124,16 +153,55 @@ const page = ref(1)
 const total = ref(0)
 const keyword = ref('')
 const appliedKeyword = ref('')
-const crawler = ref('')
+const selectedSources = ref([])
+const appliedSources = ref([])
+const dateFrom = ref('')
+const dateTo = ref('')
+const appliedDateFrom = ref('')
+const appliedDateTo = ref('')
+const sourceOpen = ref(false)
+const sourcePicker = ref(null)
+const dateOpen = ref(false)
+const dateOpensUp = ref(false)
+const datePicker = ref(null)
+const viewYear = ref(new Date().getFullYear())
+const viewMonth = ref(new Date().getMonth() + 1)
+const weekdays = ['一', '二', '三', '四', '五', '六', '日']
 const { loading, error, run } = useAsync()
-const filtered = computed(() => Boolean(appliedKeyword.value || crawler.value))
+const filtered = computed(() => Boolean(
+  appliedKeyword.value || appliedSources.value.length || appliedDateFrom.value || appliedDateTo.value,
+))
+const sourceLabel = computed(() => {
+  if (!selectedSources.value.length) return '来源'
+  return sources
+    .filter((src) => selectedSources.value.includes(src.key))
+    .map((src) => src.label)
+    .join('、')
+})
+const dateLabel = computed(() => {
+  if (dateFrom.value && dateTo.value) return `${dateFrom.value} 至 ${dateTo.value}`
+  if (dateFrom.value) return `${dateFrom.value} 起`
+  return '更新时间'
+})
+const calendarCells = computed(() => {
+  const first = new Date(viewYear.value, viewMonth.value - 1, 1)
+  const pad = (first.getDay() + 6) % 7
+  const count = new Date(viewYear.value, viewMonth.value, 0).getDate()
+  const cells = Array(pad).fill(null)
+  for (let day = 1; day <= count; day += 1) {
+    cells.push(new Date(viewYear.value, viewMonth.value - 1, day))
+  }
+  return cells
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)))
 
 async function load() {
   const data = await run(() => api.news(page.value, {
     q: appliedKeyword.value,
-    crawler: crawler.value,
+    crawlers: appliedSources.value,
+    dateFrom: appliedDateFrom.value,
+    dateTo: appliedDateTo.value,
   }))
   if (data) {
     items.value = data.items || []
@@ -143,14 +211,79 @@ async function load() {
 
 function applySearch() {
   appliedKeyword.value = keyword.value.trim()
+  appliedSources.value = [...selectedSources.value]
+  appliedDateFrom.value = dateFrom.value
+  appliedDateTo.value = dateTo.value
+  sourceOpen.value = false
+  dateOpen.value = false
   page.value = 1
   load()
 }
 
-function pickCrawler(key) {
-  crawler.value = key && crawler.value === key ? '' : key
-  page.value = 1
-  load()
+function isoDate(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function placeCalendar() {
+  const root = datePicker.value
+  const menu = root?.querySelector('.cal')
+  if (!root || !menu) return
+  const trigger = root.getBoundingClientRect()
+  const height = menu.offsetHeight
+  const spaceBelow = window.innerHeight - trigger.bottom
+  dateOpensUp.value = spaceBelow < height + 8 && trigger.top > spaceBelow
+}
+
+function toggleDate() {
+  sourceOpen.value = false
+  dateOpen.value = !dateOpen.value
+  if (!dateOpen.value) return
+  const [year, month] = (dateFrom.value || isoDate(new Date())).split('-')
+  viewYear.value = Number(year)
+  viewMonth.value = Number(month)
+  nextTick(placeCalendar)
+}
+
+function shiftMonth(step) {
+  const next = new Date(viewYear.value, viewMonth.value - 1 + step, 1)
+  viewYear.value = next.getFullYear()
+  viewMonth.value = next.getMonth() + 1
+}
+
+function pickDay(date) {
+  const value = isoDate(date)
+  if (!dateFrom.value || dateTo.value) {
+    dateFrom.value = value
+    dateTo.value = ''
+    return
+  }
+  if (value < dateFrom.value) {
+    dateTo.value = dateFrom.value
+    dateFrom.value = value
+  } else {
+    dateTo.value = value
+  }
+}
+
+function dayClass(cell) {
+  if (!cell) return 'is-empty'
+  const value = isoDate(cell)
+  return {
+    'is-edge': value === dateFrom.value || value === dateTo.value,
+    'in-range': dateFrom.value && dateTo.value && value > dateFrom.value && value < dateTo.value,
+  }
+}
+
+function clearDates() {
+  dateFrom.value = ''
+  dateTo.value = ''
+}
+
+function onDocumentClick(event) {
+  if (sourcePicker.value && !sourcePicker.value.contains(event.target)) sourceOpen.value = false
+  if (datePicker.value && !datePicker.value.contains(event.target)) dateOpen.value = false
 }
 
 function reload() { load() }
@@ -161,7 +294,11 @@ function go(p) {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  document.addEventListener('click', onDocumentClick)
+})
+onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 </script>
 
 <style scoped>
@@ -176,19 +313,121 @@ onMounted(load)
   flex: 1 1 220px;
   min-width: 180px;
 }
-.seg { display: flex; flex-wrap: wrap; gap: 8px; }
-.seg-btn {
-  border: 1px solid var(--rule);
+.picker { position: relative; }
+.picker-btn {
   background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  cursor: pointer;
   color: var(--ink-soft);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+  padding: 11px 14px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.seg-btn.on {
+.picker-btn:hover:not(:disabled) {
+  background: var(--wash);
+  color: var(--pine);
+  border-color: var(--pine);
+  box-shadow: none;
+  transform: none;
+}
+.picker-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 28px -16px rgba(28, 36, 32, 0.45);
+}
+.picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+.cal { left: auto; right: 0; width: 280px; padding: 12px; }
+.cal.up { top: auto; bottom: calc(100% + 6px); }
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cal-title {
+  font-family: var(--font-serif);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.cal-nav,
+.cal-clear,
+.cal-day {
+  background: transparent;
+  color: var(--ink-soft);
+  border: 0;
+  box-shadow: none;
+  transform: none;
+}
+.cal-nav {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  font-size: 18px;
+  line-height: 1;
+}
+.cal-nav:hover:not(:disabled),
+.cal-clear:hover:not(:disabled),
+.cal-day:hover:not(:disabled) {
+  background: var(--wash);
+  color: var(--pine);
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.cal-week,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-week span {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--ink-mute);
+  padding-bottom: 4px;
+}
+.cal-day {
+  height: 32px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.cal-day.is-empty { visibility: hidden; }
+.cal-day.in-range { background: var(--wash); color: var(--pine); border-radius: 0; }
+.cal-day.is-edge {
   background: var(--pine);
   color: var(--paper);
-  border-color: var(--pine);
+}
+.cal-day.is-edge:hover:not(:disabled) {
+  background: var(--moss);
+  color: var(--paper);
+}
+.cal-clear {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
 }
 .head-row {
   display: flex;

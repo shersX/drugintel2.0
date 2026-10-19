@@ -1,6 +1,6 @@
 <template>
   <div class="shell">
-    <header v-if="!isLogin" class="masthead">
+    <header class="masthead">
       <div class="masthead-inner">
         <div class="mast-top">
           <router-link to="/" class="mast-brand">
@@ -15,10 +15,10 @@
               <router-link to="/account" class="who">{{ session.user.display_name }}</router-link>
               <button type="button" class="ghost" @click="logout">退出</button>
             </template>
-            <span v-else class="mast-date">Vol. {{ issue }} · {{ today }}</span>
+            <router-link v-else-if="!isLogin" to="/login" class="login-link">登录</router-link>
           </span>
         </div>
-        <nav v-if="session.user" class="mast-nav">
+        <nav class="mast-nav">
           <router-link
             v-for="item in navItems"
             :key="item.to"
@@ -29,13 +29,37 @@
       </div>
     </header>
 
-    <main class="page" :class="{ bare: isLogin }">
+    <main class="page" :class="{ bare: isLogin, compact: isChat }">
       <router-view v-slot="{ Component }">
         <Transition name="page" mode="out-in">
-          <component :is="Component" />
+          <AuthGate
+            v-if="showGate"
+            :key="route.fullPath"
+            :next="route.fullPath"
+            :admin="gateIsAdmin"
+          />
+          <component v-else :is="Component" :key="route.fullPath" />
         </Transition>
       </router-view>
     </main>
+
+    <div
+      v-if="authPrompt.open"
+      class="auth-mask"
+      @click.self="dismissPrompt"
+      @keydown.esc="dismissPrompt"
+    >
+      <div class="card auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <h2 id="auth-title">{{ authPrompt.kind === 'admin' ? '需要管理员权限' : '请登录' }}</h2>
+        <p>{{ authPrompt.kind === 'admin' ? '当前账户不能使用管理功能。' : promptCopy(authPrompt.next) }}</p>
+        <div class="auth-actions">
+          <button v-if="authPrompt.kind === 'login'" type="button" @click="goLogin">登录</button>
+          <button type="button" class="secondary" @click="dismissPrompt">
+            {{ authPrompt.kind === 'admin' ? '知道了' : '取消' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <footer v-if="!isLogin" class="colophon">
       <div class="colophon-inner">
@@ -47,9 +71,11 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from './api'
+import AuthGate from './components/AuthGate.vue'
+import { authPrompt, closeAuthPrompt, promptCopy } from './authPrompt'
 import { setCrawlerSources } from './format'
 import { clearUser, session } from './session'
 
@@ -72,6 +98,32 @@ watch(
 const route = useRoute()
 const router = useRouter()
 const isLogin = computed(() => route.path === '/login')
+const isChat = computed(() => route.path === '/chat')
+const showGate = computed(() => {
+  if (route.meta.public) return false
+  if (!session.user) return true
+  return Boolean(route.meta.admin && session.user.role !== 'admin')
+})
+const gateIsAdmin = computed(() => Boolean(session.user && route.meta.admin && session.user.role !== 'admin'))
+
+function goLogin() {
+  const next = authPrompt.next
+  closeAuthPrompt()
+  router.push({ path: '/login', query: next && next !== '/' ? { next } : {} })
+}
+
+function dismissPrompt() {
+  const admin = authPrompt.kind === 'admin'
+  closeAuthPrompt()
+  if (admin && route.path !== '/') router.replace('/')
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape' && authPrompt.open) dismissPrompt()
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 const navItems = computed(() => {
   const items = [
     { to: '/', label: '仪表盘' },
@@ -93,26 +145,55 @@ async function logout() {
   try {
     await api.logout()
   } catch {
-    /* 会话已失效时直接回到登录页 */
+    /* 会话已失效时只清本地状态 */
   }
   clearUser()
-  router.replace('/login')
+  if (!route.meta.public) router.replace('/')
 }
-
-const now = new Date()
-const today = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`
-const issue = String(Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5))
 </script>
 
 <style scoped>
 .mast-side { display: flex; align-items: center; gap: 8px; }
-.who {
-  font-size: var(--fs-sm);
+.who,
+.login-link {
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   font-weight: 600;
+}
+.mast-side :deep(.ghost) {
+  padding: 4px 10px;
+  font-size: var(--fs-xs);
+  min-height: 0;
+  line-height: 1.3;
 }
 .page.bare {
   max-width: none;
   padding: 0;
 }
+.page.compact {
+  padding-top: 12px;
+  padding-bottom: 16px;
+}
+.auth-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 36, 32, 0.42);
+}
+.auth-dialog {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-dialog h2 {
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  margin: 0;
+}
+.auth-dialog p { margin: 0; color: var(--ink-soft); }
+.auth-actions { display: flex; gap: 10px; margin-top: 8px; }
 </style>

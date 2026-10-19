@@ -3,7 +3,7 @@
     <form class="card login-card" @submit.prevent="submit">
       <div class="ed-kicker">Sign in</div>
       <h1>登录</h1>
-      <p class="lede">账户由管理员开通。情报库、采集和模型配置不随登录页公开。</p>
+      <p class="lede">账户由管理员开通。</p>
       <label for="email">邮箱</label>
       <input id="email" v-model="email" type="email" autocomplete="username" required />
       <label for="password">密码</label>
@@ -45,7 +45,7 @@ async function submit() {
 
 <style scoped>
 .login {
-  min-height: 100dvh;
+  min-height: 70vh;
   display: grid;
   place-items: center;
   padding: 24px;

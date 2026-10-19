@@ -11,7 +11,8 @@ services:
       POSTGRES_USER: "user"
       LANG: "en_US.UTF-8"
     volumes:
-      - ./data/pgdata:/var/lib/postgresql/data
+      # 相对 compose 文件所在的项目根目录：{本项目}/volumes/postgresql
+      - ./volumes/postgresql:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d drugintel"]

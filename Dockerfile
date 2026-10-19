@@ -42,7 +42,8 @@ WORKDIR /app
 # 复制虚拟环境和源代码
 COPY --from=backend-build /app /app
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Windows 检出常带 CRLF，shebang 会变成 /bin/sh\r，容器里表现为 entrypoint 找不到。
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 # 激活虚拟环境
 ENV VIRTUAL_ENV=/app/.venv

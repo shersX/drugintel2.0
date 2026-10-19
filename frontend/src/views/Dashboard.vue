@@ -2,8 +2,8 @@
   <div>
     <header class="ed-head reveal">
       <div class="ed-kicker">Overview · 情报全景</div>
-      <h1 class="ed-title">今日，医药世界<br />正在发生什么</h1>
-      <p class="ed-lede">多源新闻的采集、向量化与事件聚类进展——像翻阅一本每日刊行的情报简报。</p>
+      <h1 class="ed-title">今日，医药世界正在发生什么</h1>
+      <p class="ed-lede">像翻阅一本每日刊行的医药情报简报。</p>
     </header>
 
     <!-- 错误提示 -->
@@ -11,17 +11,14 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.01" />
       </svg>
-      <div class="empty-title">数据服务未就绪</div>
-      <p>{{ error }}<br /><span class="meta">请确认后端已在 :8000 启动</span></p>
+      <div class="empty-title">暂时无法加载</div>
+      <p>请稍后重试。</p>
       <button class="secondary" @click="load">重试</button>
     </div>
 
     <template v-else>
-      <p v-if="!loading && !overview.news_count" class="card note">
-        <template v-if="session.user?.role === 'admin'">
-          库里还没有新闻。到 <router-link to="/monitor">系统监控</router-link> 选择爬虫并启动采集。
-        </template>
-        <template v-else>库里还没有新闻。采集由管理员在系统监控里启动。</template>
+      <p v-if="!loading && !overview.news_count && session.user?.role === 'admin'" class="card note">
+        库里还没有新闻。到 <router-link to="/monitor">系统监控</router-link> 选择爬虫并启动采集。
       </p>
       <!-- 01 数字全景 -->
       <section class="reveal" style="--reveal-delay:100ms">
@@ -48,7 +45,6 @@
           <div v-else-if="loading" class="skeleton" style="height:220px"></div>
           <div v-else class="empty">
             <div class="empty-title">暂无趋势数据</div>
-            <p>运行采集流水线后，这里将刊出每日新闻量曲线</p>
           </div>
         </section>
 

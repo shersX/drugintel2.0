@@ -344,6 +344,10 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   align-items: flex-end;
   gap: var(--sp-4);
 }
+.head-row .ed-lede {
+  max-width: none;
+  white-space: nowrap;
+}
 
 .health-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .health-card { padding: var(--sp-4) var(--sp-5); }
