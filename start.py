@@ -110,10 +110,36 @@ def _stop(procs: list[subprocess.Popen]) -> None:
             proc.kill()
 
 
+def _backend_cmd() -> list[str]:
+    """优先 uv；没有则用当前解释器（conda / venv / 系统 Python）。"""
+    uvicorn_args = [
+        "uvicorn",
+        "backend.src.api.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload",
+    ]
+    if shutil.which("uv"):
+        return ["uv", "run", *uvicorn_args]
+    try:
+        import uvicorn  # noqa: F401
+    except ImportError as exc:
+        raise SystemExit(
+            "未找到 uv，且当前 Python 未安装项目依赖。\n"
+            "请任选其一：\n"
+            "  1) 安装 uv 后执行：uv sync\n"
+            "  2) 在 conda 环境中执行：pip install -e .\n"
+            f"当前解释器：{sys.executable}"
+        ) from exc
+    print(f"未使用 uv，改用当前 Python：{sys.executable}")
+    return [sys.executable, "-m", *uvicorn_args]
+
+
 def main() -> None:
     os.chdir(ROOT)
-    if not shutil.which("uv"):
-        raise SystemExit("未找到 uv。请先安装 uv，并在项目目录执行 uv sync。")
+    backend_cmd = _backend_cmd()
     _prepare_docker()
     _ensure_schema()
     _ensure_frontend_deps()
@@ -122,14 +148,7 @@ def main() -> None:
     if sys.platform != "win32" and "/mnt/" in str(ROOT):
         env["WATCHFILES_FORCE_POLLING"] = "true"
 
-    backend = _popen(
-        [
-            "uv", "run", "uvicorn", "backend.src.api.app:app",
-            "--host", "127.0.0.1", "--port", "8000", "--reload",
-        ],
-        ROOT,
-        env,
-    )
+    backend = _popen(backend_cmd, ROOT, env)
     frontend = _popen(
         [_npm(), "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"],
         FRONTEND,
