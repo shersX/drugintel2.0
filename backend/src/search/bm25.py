@@ -135,6 +135,7 @@ def _bm25_via_tsv(
         SELECT id
         FROM news
         WHERE search_tsv IS NOT NULL
+          AND process_status = 'ready'
           AND search_tsv @@ to_tsquery('simple', :q)
         ORDER BY ts_rank_cd(search_tsv, to_tsquery('simple', :q)) DESC
         LIMIT :lim
@@ -197,9 +198,14 @@ def _bm25_ilike_fallback(
                 News.content.ilike(p),
             ]
         )
+    from backend.src.db.crud.news import news_ready_filter
+
     rows = list(
         session.scalars(
-            select(News).where(or_(*conds)).limit(max(top_k * 5, 30))
+            select(News)
+            .where(or_(*conds))
+            .where(news_ready_filter())
+            .limit(max(top_k * 5, 30))
         ).all()
     )
     if not rows:

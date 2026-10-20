@@ -1,21 +1,27 @@
 <template>
-  <aside class="sidebar" :class="{ collapsed, drawer: drawerOpen }">
-    <div class="side-top">
+  <aside class="sidebar" :class="{ drawer: drawerOpen }">
+    <div class="side-head">
+      <div class="side-title-row">
+        <h2>历史会话</h2>
+        <button
+          type="button"
+          class="icon-btn mobile-close"
+          title="关闭"
+          @click="$emit('close-drawer')"
+        >×</button>
+      </div>
       <button type="button" class="new-btn" :disabled="busy" @click="$emit('new')">
         <span class="plus">＋</span> 新对话
-      </button>
-      <button type="button" class="icon-btn desktop-only" :title="collapsed ? '展开' : '折叠'" @click="$emit('toggle-collapse')">
-        {{ collapsed ? '»' : '«' }}
       </button>
     </div>
 
     <div v-if="!loggedIn" class="side-empty">
-      <p>登录后可查看历史会话</p>
+      <p>登录后可查看与管理历史会话。</p>
       <button type="button" class="secondary" @click="$emit('login')">去登录</button>
     </div>
 
     <div v-else-if="!groups.length" class="side-empty">
-      <p>暂无历史。发送第一条消息后会出现在这里。</p>
+      <p>还没有会话。发送第一条消息后，记录会出现在这里。</p>
     </div>
 
     <nav v-else class="side-list">
@@ -30,7 +36,7 @@
           :disabled="busy"
           @click="$emit('select', item.id)"
         >
-          <span class="side-title">{{ item.title || '新对话' }}</span>
+          <span class="side-item-title">{{ item.title || '新对话' }}</span>
           <span class="side-actions" @click.stop>
             <button type="button" class="mini" title="重命名" @click="$emit('rename', item)">✎</button>
             <button type="button" class="mini danger" title="删除" @click="$emit('remove', item)">×</button>
@@ -45,44 +51,62 @@
 defineProps({
   groups: { type: Array, default: () => [] },
   activeId: { type: String, default: '' },
-  collapsed: { type: Boolean, default: false },
   drawerOpen: { type: Boolean, default: false },
   loggedIn: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
 })
 
-defineEmits(['new', 'select', 'rename', 'remove', 'toggle-collapse', 'login'])
+defineEmits(['new', 'select', 'rename', 'remove', 'close-drawer', 'login'])
 </script>
 
 <style scoped>
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 260px;
-  min-width: 260px;
   height: 100%;
-  background: var(--wash);
+  min-width: 0;
+  background: color-mix(in srgb, var(--wash) 88%, var(--surface));
   border: 1px solid var(--rule);
   border-radius: var(--r-lg);
   overflow: hidden;
-  transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
 }
-.sidebar.collapsed {
-  width: 0;
-  min-width: 0;
-  opacity: 0;
-  border: none;
-  pointer-events: none;
-}
-.side-top {
+.side-head {
   display: flex;
-  gap: 8px;
-  padding: 12px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 14px 12px;
   border-bottom: 1px solid var(--rule);
   flex: none;
 }
+.side-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.side-title-row h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-mute);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mobile-close { display: none; }
 .new-btn {
-  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -90,26 +114,19 @@ defineEmits(['new', 'select', 'rename', 'remove', 'toggle-collapse', 'login'])
   font-weight: 700;
 }
 .plus { font-size: 16px; line-height: 1; }
-.icon-btn {
-  width: 40px;
-  flex: none;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--rule);
-}
 .side-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 10px 8px 14px;
 }
-.side-group { margin-bottom: 12px; }
+.side-group { margin-bottom: 14px; }
 .group-label {
   font-size: var(--fs-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-mute);
   font-weight: 700;
-  padding: 6px 10px;
+  padding: 4px 10px 8px;
 }
 .side-item {
   width: 100%;
@@ -132,7 +149,7 @@ defineEmits(['new', 'select', 'rename', 'remove', 'toggle-collapse', 'login'])
   border-left-color: var(--pine);
   color: var(--pine);
 }
-.side-title {
+.side-item-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -161,13 +178,14 @@ defineEmits(['new', 'select', 'rename', 'remove', 'toggle-collapse', 'login'])
 .mini:hover { background: var(--wash); color: var(--ink); }
 .mini.danger:hover { color: var(--clay); }
 .side-empty {
-  padding: 24px 16px;
+  padding: 20px 16px;
   color: var(--ink-mute);
   font-size: var(--fs-sm);
   display: flex;
   flex-direction: column;
   gap: 12px;
   align-items: flex-start;
+  line-height: 1.55;
 }
 .side-empty p { margin: 0; }
 
@@ -179,18 +197,17 @@ defineEmits(['new', 'select', 'rename', 'remove', 'toggle-collapse', 'login'])
     top: 90px;
     bottom: 16px;
     width: min(300px, calc(100vw - 24px));
-    min-width: 0;
     transform: translateX(-120%);
     opacity: 0;
     pointer-events: none;
     box-shadow: var(--shadow-sm);
+    transition: transform 0.2s ease, opacity 0.2s ease;
   }
   .sidebar.drawer {
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
   }
-  .sidebar.collapsed { width: min(300px, calc(100vw - 24px)); }
-  .desktop-only { display: none; }
+  .mobile-close { display: inline-grid; place-items: center; }
 }
 </style>

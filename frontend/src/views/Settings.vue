@@ -3,7 +3,7 @@
     <header class="ed-head reveal">
       <div class="ed-kicker">Admin · 系统配置</div>
       <h1 class="ed-title">系统设置</h1>
-      <p class="ed-lede">模型接口、RAG 检索、爬虫注册表与过滤关键词。修改后立即对后续请求/采集生效。</p>
+      <p class="ed-lede">模型、检索、爬虫与关键词。改完即对后续请求和采集生效。</p>
     </header>
 
     <nav class="tabs reveal" aria-label="设置分区">
@@ -19,51 +19,107 @@
 
     <!-- 模型配置 -->
     <div v-show="activeTab === 'models'">
-      <p v-if="usingEnv" class="card note">当前没有启用的配置，系统仍使用服务器上的 .env。嵌入和重排若未单独配置，会沿用对话的地址和密钥。</p>
-      <p v-else class="card note">已启用一套接口。对话、嵌入、重排各自使用这一套里对应的地址和密钥。</p>
-      <p class="card note">当前库中向量是 {{ vectorDim || '—' }} 维。启用另一维度前会要求确认，确认后清空已有新闻向量和事件中心向量并重建索引。历史新闻不会自动重新向量化，之后的采集只处理新文章。</p>
+      <section class="card status-strip reveal">
+        <div class="status-top">
+          <div>
+            <div class="status-label">当前生效</div>
+            <div class="status-source">{{ activeSourceLabel }}</div>
+          </div>
+          <div class="status-dim">
+            <span class="status-label">库向量维度</span>
+            <strong>{{ vectorDim || '—' }}</strong>
+          </div>
+        </div>
+        <div class="caps">
+          <div class="cap" :class="{ warn: activeCaps.chat.warn }">
+            <span class="cap-k">对话</span>
+            <span class="cap-v mono">{{ activeCaps.chat.text }}</span>
+          </div>
+          <div class="cap" :class="{ warn: activeCaps.embedding.warn }">
+            <span class="cap-k">嵌入</span>
+            <span class="cap-v mono">{{ activeCaps.embedding.text }}</span>
+          </div>
+          <div class="cap" :class="{ warn: activeCaps.rerank.warn }">
+            <span class="cap-k">重排</span>
+            <span class="cap-v mono">{{ activeCaps.rerank.text }}</span>
+          </div>
+        </div>
+        <p v-if="dimMismatch" class="status-warn">启用配置的嵌入维度与库中不一致，启用前会要求确认并重建向量索引。</p>
+      </section>
 
-      <section class="card reveal">
-        <div class="sec-mark"><span class="no">01</span><h3>新增一套</h3><span class="rule"></span></div>
+      <div class="list-toolbar reveal">
+        <div class="sec-mark"><span class="no">01</span><h3>已保存配置</h3><span class="rule"></span></div>
+        <button
+          type="button"
+          class="secondary"
+          :disabled="busy || editingId === 'new'"
+          @click="startCreate"
+        >新增配置</button>
+      </div>
+
+      <section v-if="editingId === 'new'" class="card profile-edit reveal">
+        <div class="edit-head">
+          <strong>新增一套接口</strong>
+        </div>
         <ProfileForm
           :key="draftKey"
           :model="draft"
           :busy="busy"
           :notices="draftNotices"
+          allow-sync
+          show-cancel
           submit-label="保存"
           @submit="create"
           @test="testDraft"
+          @cancel="cancelEdit"
         />
         <p v-if="error" class="form-error">{{ error }}</p>
       </section>
 
-      <section class="reveal" style="margin-top:32px">
-        <div class="sec-mark" v-if="profiles.length"><span class="no">02</span><h3>已保存</h3><span class="rule"></span></div>
+      <section class="profile-list reveal">
         <article v-for="item in profiles" :key="item.id" class="card profile">
-          <div class="profile-head">
-            <span class="pill" :class="item.is_active ? 'ok' : ''">{{ item.is_active ? '启用中' : '未启用' }}</span>
+          <div class="profile-summary">
+            <div class="profile-title">
+              <strong>{{ item.name || `配置 #${item.id}` }}</strong>
+              <span class="pill" :class="item.is_active ? 'ok' : ''">{{ item.is_active ? '启用中' : '未启用' }}</span>
+            </div>
+            <div class="profile-tags">
+              <span class="tag" :class="{ miss: !item.has_chat_key }">对话 {{ item.chat_model || '—' }}</span>
+              <span class="tag" :class="{ miss: !item.has_embedding_key }">嵌入 {{ item.embedding_model || '—' }}·{{ item.embedding_dim || '—' }}</span>
+              <span class="tag" :class="{ miss: !item.has_reranker_key }">重排 {{ item.reranker_model || '—' }}</span>
+            </div>
+            <div class="row profile-actions">
+              <button type="button" class="secondary" :disabled="busy || item.is_active" @click="activate(item)">启用</button>
+              <button
+                type="button"
+                class="secondary"
+                :disabled="busy"
+                @click="toggleEdit(item.id)"
+              >{{ editingId === item.id ? '收起' : '编辑' }}</button>
+              <button type="button" class="ghost danger-ghost" :disabled="busy" @click="remove(item)">删除</button>
+            </div>
           </div>
-          <ProfileForm
-            :model="item"
-            :stamp="revision"
-            :busy="busy"
-            :notices="item.notices"
-            :keep-chat="item.has_chat_key"
-            :keep-embedding="item.has_embedding_key"
-            :keep-rerank="item.has_reranker_key"
-            submit-label="保存修改"
-            @submit="save(item, $event)"
-            @test="testSaved(item, $event)"
-          />
+          <div v-if="editingId === item.id" class="profile-edit-body">
+            <ProfileForm
+              :model="item"
+              :stamp="revision"
+              :busy="busy"
+              :notices="item.notices"
+              :keep-chat="item.has_chat_key"
+              :keep-embedding="item.has_embedding_key"
+              :keep-rerank="item.has_reranker_key"
+              show-cancel
+              submit-label="保存修改"
+              @submit="save(item, $event)"
+              @test="testSaved(item, $event)"
+              @cancel="cancelEdit"
+            />
+          </div>
           <p v-if="item.error" class="form-error">{{ item.error }}</p>
-          <div class="row">
-            <button type="button" class="secondary" :disabled="busy || item.is_active" @click="activate(item)">启用</button>
-            <button type="button" class="ghost danger-ghost" :disabled="busy" @click="remove(item)">删除</button>
-          </div>
         </article>
-        <div v-if="!profiles.length && !loading" class="card empty">
+        <div v-if="!profiles.length && !loading && editingId !== 'new'" class="card empty">
           <div class="empty-title">还没有保存的接口</div>
-          <p>先在上方新增一套，再点启用。</p>
+          <p>点上方「新增配置」，保存后再启用。</p>
         </div>
       </section>
     </div>
@@ -184,7 +240,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
 import ProfileForm from './ProfileForm.vue'
@@ -199,7 +255,6 @@ const activeTab = ref('models')
 
 const { loading, error, run } = useAsync()
 const profiles = ref([])
-const usingEnv = ref(true)
 const vectorDim = ref(null)
 const busy = ref(false)
 const slotLabel = { chat: '对话', embedding: '嵌入', rerank: '重排' }
@@ -207,6 +262,64 @@ const draftNotices = reactive({ chat: null, embedding: null, rerank: null })
 const revision = ref(0)
 const draftKey = ref(0)
 const draft = reactive(blank())
+/** @type {import('vue').Ref<'new' | number | null>} */
+const editingId = ref(null)
+
+const activeProfile = computed(() => profiles.value.find((item) => item.is_active) || null)
+
+const activeSourceLabel = computed(() => {
+  if (activeProfile.value) return activeProfile.value.name || `配置 #${activeProfile.value.id}`
+  return '未启用配置 · 使用 .env'
+})
+
+const activeCaps = computed(() => {
+  const row = activeProfile.value
+  if (!row) {
+    return {
+      chat: { text: '.env 默认', warn: false },
+      embedding: { text: '.env 默认', warn: false },
+      rerank: { text: '.env 默认', warn: false },
+    }
+  }
+  return {
+    chat: {
+      text: row.has_chat_key ? (row.chat_model || '—') : '缺少 Key',
+      warn: !row.has_chat_key,
+    },
+    embedding: {
+      text: row.has_embedding_key
+        ? `${row.embedding_model || '—'} · ${row.embedding_dim || '—'} 维`
+        : '缺少 Key',
+      warn: !row.has_embedding_key,
+    },
+    rerank: {
+      text: row.has_reranker_key ? (row.reranker_model || '—') : '缺少 Key',
+      warn: !row.has_reranker_key,
+    },
+  }
+})
+
+const dimMismatch = computed(() => {
+  const row = activeProfile.value
+  if (!row || vectorDim.value == null || row.embedding_dim == null) return false
+  return Number(row.embedding_dim) !== Number(vectorDim.value)
+})
+
+function startCreate() {
+  error.value = ''
+  Object.assign(draft, blank())
+  draftKey.value += 1
+  editingId.value = 'new'
+}
+
+function toggleEdit(id) {
+  editingId.value = editingId.value === id ? null : id
+}
+
+function cancelEdit() {
+  editingId.value = null
+  error.value = ''
+}
 
 const ragForm = reactive({ top_k: 10, min_relevance_score: 0.25 })
 const ragBusy = ref(false)
@@ -279,7 +392,6 @@ async function load() {
     notices: { chat: null, embedding: null, rerank: null },
     error: '',
   }))
-  usingEnv.value = Boolean(data.using_env)
   vectorDim.value = data.vector_dim
   applyDefaults(data.defaults)
   revision.value += 1
@@ -288,10 +400,12 @@ async function load() {
 
 async function create(form) {
   busy.value = true
+  error.value = ''
   try {
     await api.createLlmProfile(form)
     Object.assign(draft, blank())
     draftKey.value += 1
+    editingId.value = null
     await load()
   } catch (e) {
     error.value = e.message || '保存失败'
@@ -305,11 +419,13 @@ async function save(item, form, rebuild = false) {
   busy.value = true
   try {
     await api.updateLlmProfile(item.id, { ...form, rebuild })
+    editingId.value = null
     await load()
   } catch (e) {
     if (!rebuild && isDimMismatch(e) && window.confirm(e.message)) {
       try {
         await api.updateLlmProfile(item.id, { ...form, rebuild: true })
+        editingId.value = null
         await load()
       } catch (err) {
         item.error = err.message || '保存失败'
@@ -345,9 +461,11 @@ async function activate(item, rebuild = false) {
 }
 
 async function remove(item) {
+  if (!window.confirm(`删除「${item.name || `配置 #${item.id}`}」？`)) return
   busy.value = true
   try {
     await api.deleteLlmProfile(item.id)
+    if (editingId.value === item.id) editingId.value = null
     await load()
   } catch (e) {
     error.value = e.message || '删除失败'
@@ -578,10 +696,96 @@ onMounted(load)
 </script>
 
 <style scoped>
-.note { margin-bottom: 20px; color: var(--ink-soft); }
-.profile { margin-bottom: 16px; }
-.profile-head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.status-strip { margin-bottom: 28px; }
+.status-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 16px;
+}
+.status-label {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.status-source {
+  font-family: var(--font-serif);
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 700;
+  color: var(--pine);
+}
+.status-dim strong {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--pine);
+}
+.caps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.cap {
+  padding: 10px 12px;
+  background: var(--wash);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cap.warn { background: color-mix(in srgb, var(--clay) 10%, var(--paper)); }
+.cap-k {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  font-weight: 700;
+}
+.cap-v { font-size: var(--fs-sm); color: var(--ink); word-break: break-all; }
+.cap.warn .cap-v { color: var(--clay); font-weight: 650; }
+.status-warn { margin: 12px 0 0; color: var(--clay); font-size: var(--fs-sm); }
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.list-toolbar .sec-mark { flex: 1; margin: 0; min-width: 200px; }
+.profile-list { display: grid; gap: 12px; }
+.profile { margin: 0; }
+.profile-summary { display: grid; gap: 12px; }
+.profile-title { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.profile-title strong { font-family: var(--font-serif); font-size: var(--fs-h2); }
+.profile-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag {
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  padding: 4px 10px;
+  background: var(--wash);
+  border-radius: var(--r-sm);
+  color: var(--ink-soft);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag.miss { color: var(--clay); background: color-mix(in srgb, var(--clay) 10%, var(--paper)); }
+.profile-actions { margin: 0; }
+.profile-edit { margin-bottom: 16px; }
+.edit-head { margin-bottom: 14px; }
+.profile-edit-body {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
 .form-error { color: var(--clay); margin: 8px 0 0; }
+.mono { font-family: var(--font-mono); }
 .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
 .tab {
   border: 1px solid var(--line, #d8d2c8);

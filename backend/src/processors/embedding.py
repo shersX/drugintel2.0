@@ -124,12 +124,15 @@ class SiliconFlowEmbeddingClient:
 
 
 def _text_for_embed(item: MutableMapping) -> str:
+    """title+abstract → title+正文 → 仅 title；全空则返回空串（调用方勿打 API）。"""
     title = str(item.get("title") or "").strip()
     abstract = str(item.get("abstract") or "").strip()
     if abstract:
-        return f"{title}\n{abstract}"
-    content = plain_full_text(item.get("full_text"))[:2000]
-    return f"{title}\n{content}".strip()
+        return f"{title}\n{abstract}".strip()
+    content = plain_full_text(item.get("full_text") or item.get("content"))[:2000].strip()
+    if content:
+        return f"{title}\n{content}".strip()
+    return title
 
 
 async def embed_items(
@@ -138,7 +141,7 @@ async def embed_items(
     client: Optional[SiliconFlowEmbeddingClient] = None,
     batch_size: int = 16,
 ) -> List[MutableMapping]:
-    """为新闻写入 embedding。长度必须等于当前配置的维度，否则留空。"""
+    """为新闻写入 embedding。空文本不调 API；失败条目 embedding=None，不拖垮同批可编码项。"""
     if not items:
         return []
     emb_client = client or SiliconFlowEmbeddingClient.from_env()
@@ -146,16 +149,29 @@ async def embed_items(
 
     for start in range(0, len(result), batch_size):
         batch = result[start : start + batch_size]
-        texts = [_text_for_embed(item) for item in batch]
+        indexed: List[tuple[int, MutableMapping, str]] = []
+        for offset, item in enumerate(batch):
+            text = _text_for_embed(item)
+            if not text:
+                item["embedding"] = None
+                logger.warning(
+                    "无可用文本，跳过 embedding title=%s",
+                    str(item.get("title") or "")[:40],
+                )
+                continue
+            indexed.append((offset, item, text))
+        if not indexed:
+            continue
+        texts = [t for _, _, t in indexed]
         try:
             vectors = await emb_client.embed(texts)
         except Exception as e:
             logger.error("批量向量化失败 start=%s: %s", start, e)
-            for item in batch:
+            for _, item, _ in indexed:
                 item["embedding"] = None
             continue
         expect = emb_client.expected_dim
-        for item, vec in zip(batch, vectors):
+        for (_, item, _), vec in zip(indexed, vectors):
             if len(vec) != expect:
                 logger.warning(
                     "向量维度不符，已跳过 title=%s dim=%s expect=%s",

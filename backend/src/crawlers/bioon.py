@@ -108,6 +108,7 @@ class BioonSpider(Spider):
         title = text(response.css("h1")) or response.meta.get("title", "")
         seen_url = response.meta.get("seen_url") or response.url
         if source == "网络":
+            # 无效稿不入库，仍标记已见以免反复抓取
             self.seen.add(seen_url)
             self.logger.debug("已跳过 原因=作者为网络 标题=%s 地址=%s", title, seen_url)
             return
@@ -115,7 +116,7 @@ class BioonSpider(Spider):
             self.seen.add(seen_url)
             self.logger.debug("已跳过 原因=正文为空 标题=%s 地址=%s", title, seen_url)
             return
-        self.seen.add(seen_url)
+        # 有效稿：raw 落库成功后再 mark_seen_urls，避免「已见未入库」丢稿
         yield self._item(title, source, response.url, published_at, full_text, content_html)
 
     @staticmethod

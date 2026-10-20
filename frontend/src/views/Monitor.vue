@@ -3,8 +3,8 @@
     <header class="ed-head reveal">
       <div class="head-row">
         <div>
-          <div class="ed-kicker">System · 印务检查</div>
-          <h1 class="ed-title">运行监控</h1>
+          <div class="ed-kicker">Crawl · 采集监控</div>
+          <h1 class="ed-title">爬虫监控</h1>
           <p class="ed-lede">基础设施健康、流水线状态。采集在此选择爬虫与节奏后启动，并查看每个爬虫的日志。</p>
         </div>
         <button class="secondary" :disabled="loading" @click="load">刷新</button>
@@ -49,7 +49,37 @@
           <span class="meta">最近一轮 {{ fmt(crawl?.last_run?.started_at) }}</span>
           <span class="meta">下次预计 {{ formatNext(crawl?.next_run_at) }}</span>
         </div>
-        <p v-if="crawl?.last_run?.error" class="form-error">{{ crawl.last_run.error }}</p>
+        <div v-if="progressView" class="progress-panel">
+          <div class="progress-head">
+            <strong>{{ progressView.label }}</strong>
+            <span class="meta">{{ progressView.detail }}</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" :style="{ width: progressView.pct + '%' }"></div>
+          </div>
+          <div class="progress-meta meta">
+            <span v-if="progressView.crawlerText">{{ progressView.crawlerText }}</span>
+            <span v-if="progressView.counts">{{ progressView.counts }}</span>
+          </div>
+          <ol class="progress-stages">
+            <li
+              v-for="s in progressStages"
+              :key="s.key"
+              :class="{ on: s.on, done: s.done }"
+            >{{ s.label }}</li>
+          </ol>
+        </div>
+        <div v-if="crawl && crawl.llm_ready === false" class="llm-gate">
+          <p class="form-error">{{ crawl.llm_message || '尚未配置 LLM，无法启动采集。' }}</p>
+          <router-link class="llm-gate-link" to="/settings">前往模型配置</router-link>
+        </div>
+        <div v-if="crawl?.last_run?.error" class="run-error">
+          <p class="form-error">最近一轮失败：{{ shortError(crawl.last_run.error) }}</p>
+          <details v-if="crawl.last_run.error.length > 240" class="run-error-detail">
+            <summary>查看完整错误</summary>
+            <pre>{{ crawl.last_run.error }}</pre>
+          </details>
+        </div>
 
         <div class="field">
           <label>爬虫</label>
@@ -88,8 +118,10 @@
         <div class="row">
           <button type="button" :disabled="!canStart" @click="startCrawl">{{ actionLoading && !locked ? '启动中…' : '启动' }}</button>
           <button type="button" class="secondary" :disabled="!locked || actionLoading" @click="stopCrawl">停止</button>
+          <button type="button" class="ghost" :disabled="actionLoading || locked" @click="reprocessPending">补跑积压</button>
         </div>
         <p v-if="actionError" class="form-error">{{ actionError }}</p>
+        <p v-if="reprocessMsg" class="meta">{{ reprocessMsg }}</p>
 
         <div class="log-list">
           <article v-for="c in crawlerLogs" :key="c.key" class="log-card">
@@ -175,12 +207,27 @@ const selected = ref(['bioon', 'globenewswire', 'prnewswire', 'pharmcube'])
 const formSynced = ref(false)
 const actionError = ref('')
 const actionLoading = ref(false)
+const reprocessMsg = ref('')
 let pollTimer = 0
+
+const STAGE_ORDER = [
+  { key: 'crawling', label: '爬取' },
+  { key: 'filtering', label: '过滤' },
+  { key: 'persist', label: '落库' },
+  { key: 'reprocess', label: '补跑' },
+  { key: 'relevance', label: '相关性' },
+  { key: 'summary', label: '摘要' },
+  { key: 'embedding', label: '向量' },
+  { key: 'clustering', label: '聚类' },
+  { key: 'done', label: '完成' },
+]
 
 const checked = computed(() => health.value !== null)
 const locked = computed(() => Boolean(crawl.value?.running))
+const llmReady = computed(() => crawl.value?.llm_ready !== false)
 const canStart = computed(() => {
   if (locked.value || actionLoading.value) return false
+  if (!llmReady.value) return false
   if (!selected.value.length) return false
   if (scheduleMode.value === 'daily' && !dailyTime.value) return false
   return true
@@ -194,6 +241,47 @@ const phaseClass = computed(() => {
   if (crawl.value?.active) return 'warn'
   if (crawl.value?.running) return 'ok'
   return ''
+})
+const progressRaw = computed(() => crawl.value?.progress || crawl.value?.last_run?.progress || null)
+const progressView = computed(() => {
+  const p = progressRaw.value
+  if (!p || !crawl.value?.active) return null
+  const done = Number(p.crawlers_done || 0)
+  const total = Number(p.crawlers_total || 0)
+  const stage = p.stage || 'crawling'
+  const idx = STAGE_ORDER.findIndex((s) => s.key === stage)
+  let pct = idx >= 0 ? Math.round(((idx + 1) / STAGE_ORDER.length) * 100) : 8
+  if (stage === 'crawling' && total > 0) {
+    pct = Math.max(8, Math.round((done / Math.max(total, 1)) * 40))
+  }
+  if (stage === 'done') pct = 100
+  return {
+    label: p.label || stage,
+    detail: p.detail || '',
+    pct: Math.min(100, Math.max(5, pct)),
+    crawlerText: total ? `爬虫 ${done}/${total}` : '',
+    counts: [
+      p.items_in != null ? `输入 ${p.items_in}` : '',
+      p.items_out != null ? `输出 ${p.items_out}` : '',
+      p.raw_inserted != null ? `落库 ${p.raw_inserted}` : '',
+    ].filter(Boolean).join(' · '),
+  }
+})
+const progressStages = computed(() => {
+  const p = progressRaw.value
+  const stage = p?.stage || ''
+  const idx = STAGE_ORDER.findIndex((s) => s.key === stage)
+  return STAGE_ORDER
+    .filter((s) => s.key !== 'reprocess' || stage === 'reprocess')
+    .map((s) => {
+      const orderIdx = STAGE_ORDER.findIndex((x) => x.key === s.key)
+      return {
+        key: s.key,
+        label: s.label,
+        on: s.key === stage,
+        done: idx >= 0 && orderIdx >= 0 && orderIdx < idx,
+      }
+    })
 })
 const sources = computed(() => {
   const rows = crawl.value?.available
@@ -225,8 +313,10 @@ const healthRows = computed(() => {
     {
       name: '向量覆盖',
       level: vi.status === 'ok' ? (embTotal && embDone < embTotal ? 'warn' : 'ok') : 'bad',
-      value: embTotal ? `${Math.round((embDone / embTotal) * 100)}%` : '—',
-      detail: `${embDone} / ${embTotal} 条新闻已向量化`,
+      value: embTotal ? `${Math.round((embDone / embTotal) * 100)}%` : (vi.status === 'ok' ? '100%' : '—'),
+      detail: embTotal
+        ? `${embDone} / ${embTotal} 条应向量化新闻已处理${vi.news_rejected ? ` · 已排除 ${vi.news_rejected} 条拒绝稿` : ''}`
+        : (vi.news_rejected ? `暂无待向量化稿件 · 已排除 ${vi.news_rejected} 条拒绝稿` : '暂无新闻'),
     },
   ]
 })
@@ -235,6 +325,14 @@ const statusLabel = (s) => ({ success: '成功', running: '运行中', failed: '
 const statusClass = (s) => ({ success: 'ok', running: 'warn', failed: 'danger' }[s] || '')
 const fmt = (v) => (v ? formatTime(v) : '尚未执行')
 const sourceLabel = (key) => crawlerLabel(key)
+
+function shortError(text) {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  const first = raw.split('\n').map((line) => line.trim()).find(Boolean) || raw
+  if (first.length <= 240) return first
+  return `${first.slice(0, 240)}…`
+}
 
 function formatNext(value) {
   if (!value) return '—'
@@ -297,6 +395,10 @@ async function load() {
 
 async function startCrawl() {
   actionError.value = ''
+  if (!llmReady.value) {
+    actionError.value = crawl.value?.llm_message || '尚未配置 LLM，请先到「模型配置」设置'
+    return
+  }
   actionLoading.value = true
   try {
     const status = await api.crawlStart({
@@ -330,9 +432,34 @@ async function stopCrawl() {
   }
 }
 
-onMounted(() => {
-  load()
-  pollTimer = setInterval(refreshQuiet, 5000)
+async function reprocessPending() {
+  actionError.value = ''
+  reprocessMsg.value = ''
+  actionLoading.value = true
+  try {
+    const stats = await api.crawlReprocess(50)
+    reprocessMsg.value = `补跑完成：捞取 ${stats.pending ?? 0} 条，ready ${stats.ready_updated ?? stats.after_embedding ?? 0}`
+    await refreshQuiet()
+  } catch (e) {
+    actionError.value = e.message || '补跑失败'
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+function armPoll(ms) {
+  clearInterval(pollTimer)
+  pollTimer = setInterval(async () => {
+    const wasActive = Boolean(crawl.value?.active)
+    await refreshQuiet()
+    const nowActive = Boolean(crawl.value?.active)
+    if (wasActive !== nowActive) armPoll(nowActive ? 2000 : 5000)
+  }, ms)
+}
+
+onMounted(async () => {
+  await load()
+  armPoll(crawl.value?.active ? 2000 : 5000)
 })
 onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
@@ -392,6 +519,52 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 .task-table tbody tr:last-child td { border-bottom: none; }
 
 .crawl-status { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; }
+.progress-panel {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  background: var(--wash);
+  border-radius: var(--r-md);
+}
+.progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.progress-head strong { font-family: var(--font-serif); font-size: var(--fs-h2); color: var(--pine); }
+.progress-track {
+  height: 8px;
+  background: color-mix(in srgb, var(--pine) 12%, var(--paper));
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--pine);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+.progress-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.progress-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.progress-stages li {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-mute);
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+}
+.progress-stages li.done { color: var(--moss); background: color-mix(in srgb, var(--moss) 12%, transparent); }
+.progress-stages li.on { color: var(--paper); background: var(--pine); }
 .field { margin-bottom: 16px; }
 .field label { display: block; font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); font-weight: 700; margin-bottom: 8px; }
 .seg { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -403,6 +576,45 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 .seg-btn.on { background: var(--pine); color: var(--paper); }
 .hint { margin: 0 0 16px; }
 .form-error { color: var(--clay); margin: 8px 0; }
+.run-error { margin: 0 0 16px; }
+.run-error .form-error { margin: 0; }
+.run-error-detail {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+.run-error-detail summary { cursor: pointer; color: var(--pine); font-weight: 650; }
+.run-error-detail pre {
+  margin: 8px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  background: var(--wash);
+  color: var(--ink);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+}
+.llm-gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--clay) 8%, var(--paper));
+  border-radius: var(--r-md);
+}
+.llm-gate .form-error { margin: 0; }
+.llm-gate-link {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .log-list { display: grid; gap: 12px; margin-top: 20px; }
 .log-card { border-top: 1px solid var(--line); padding-top: 12px; }
 .log-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }

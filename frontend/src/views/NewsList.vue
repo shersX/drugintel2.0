@@ -96,7 +96,7 @@
       </svg>
       <div class="empty-title">{{ filtered ? '没有符合条件的新闻' : '暂无新闻' }}</div>
       <p v-if="filtered">换一个关键词、来源或时间再试。</p>
-      <p v-else-if="session.user?.role === 'admin'">到<router-link to="/monitor">系统监控</router-link>选择爬虫并启动采集，处理完成后会出现在这里。</p>
+      <p v-else-if="session.user?.role === 'admin'">到<router-link to="/monitor">爬虫监控</router-link>选择爬虫并启动采集，处理完成后会出现在这里。</p>
     </div>
 
     <!-- 目录式条目 -->

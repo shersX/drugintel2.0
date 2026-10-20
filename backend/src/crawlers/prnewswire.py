@@ -96,8 +96,7 @@ class PrNewswireSpider(Spider):
     async def parse_detail(self, response: Response):
         body = response.css("section.release-body")
         content_html = fragment_html(body) if body else ""
-        seen_url = response.meta.get("seen_url") or response.url
-        self.seen.add(seen_url)
+        # 有效稿：raw 落库成功后再 mark_seen_urls
         yield self._item(
             text(response.css("h1")) or response.meta.get("title", ""),
             text(response.css("div.swaping-class-left strong")),

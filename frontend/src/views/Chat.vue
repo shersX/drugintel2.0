@@ -1,11 +1,10 @@
 <template>
-  <div class="chat-layout" :class="{ 'side-collapsed': collapsed }">
+  <div class="chat-layout">
     <div v-if="drawerOpen" class="drawer-mask" @click="drawerOpen = false" />
 
     <ChatSidebar
       :groups="groupedConversations"
       :active-id="conversationId"
-      :collapsed="collapsed"
       :drawer-open="drawerOpen"
       :logged-in="Boolean(session.user)"
       :busy="loading"
@@ -13,21 +12,15 @@
       @select="selectConversation"
       @rename="renameConversation"
       @remove="removeConversation"
-      @toggle-collapse="collapsed = !collapsed"
+      @close-drawer="drawerOpen = false"
       @login="openLoginPrompt('/chat')"
     />
 
     <div class="chat-main">
-      <header class="ed-head">
-        <div class="head-bar">
-          <button type="button" class="ghost mobile-history" @click="drawerOpen = !drawerOpen">历史</button>
-          <button
-            v-if="collapsed"
-            type="button"
-            class="ghost desktop-expand"
-            @click="collapsed = false"
-          >显示历史</button>
-        </div>
+      <header class="ed-head mobile-only">
+        <button type="button" class="ghost mobile-history" @click="drawerOpen = !drawerOpen">
+          历史会话
+        </button>
       </header>
 
       <ChatThread
@@ -62,7 +55,6 @@ const messages = ref([])
 const conversationId = ref('')
 const conversations = ref([])
 const loading = ref(false)
-const collapsed = ref(false)
 const drawerOpen = ref(false)
 const threadRef = ref(null)
 
@@ -270,19 +262,11 @@ watch(
 <style scoped>
 .chat-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 0 20px;
   height: calc(100dvh - 148px);
   max-height: calc(100dvh - 148px);
   min-height: 0;
-}
-.chat-layout.side-collapsed {
-  grid-template-columns: minmax(0, 1fr);
-}
-@media (min-width: 901px) {
-  .chat-layout.side-collapsed :deep(.sidebar) {
-    display: none;
-  }
 }
 .chat-main {
   display: flex;
@@ -293,14 +277,9 @@ watch(
 }
 .ed-head {
   flex: none;
+  margin-bottom: 12px;
 }
-.head-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.mobile-history { display: none; }
+.mobile-only { display: none; }
 .drawer-mask {
   position: fixed;
   inset: 0;
@@ -308,18 +287,11 @@ watch(
   background: rgba(28, 36, 32, 0.35);
 }
 
-@media (min-width: 901px) {
-  .ed-head:not(:has(.desktop-expand)) { display: none; }
-  .desktop-expand { margin-bottom: 12px; }
-}
-
 @media (max-width: 900px) {
-  .chat-layout,
-  .chat-layout.side-collapsed {
+  .chat-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ed-head { margin-bottom: 12px; }
+  .mobile-only { display: block; }
   .mobile-history { display: inline-flex; }
-  .desktop-expand { display: none; }
 }
 </style>

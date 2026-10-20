@@ -206,8 +206,17 @@ def canonicalize(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
+# crawler_key → 已见文件名（raw 落库成功后再写入，避免「已见但未入库」永久丢稿）
+CRAWLER_SEEN_FILES = {
+    "bioon": "BioonNews_url.json",
+    "globenewswire": "Globenewswire_url.json",
+    "prnewswire": "Prnewswire_url.json",
+    "pharmcube": "pharmcube_url.json",
+}
+
+
 class JsonSeen:
-    """已见详情链接。读入旧的 JSON 列表，成功处理后再并入，不覆盖历史。"""
+    """已见详情链接。读入旧的 JSON 列表；新增应在 raw 落库成功后调用 add。"""
 
     def __init__(self, filename: str):
         self.path = OUT_DIR / filename
@@ -233,6 +242,30 @@ class JsonSeen:
             json.dumps(sorted(self._urls), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    def add_many(self, urls: list[str] | set[str]) -> int:
+        n = 0
+        for raw in urls:
+            url = canonicalize(str(raw))
+            if not url or url in self._urls:
+                continue
+            self._urls.add(url)
+            n += 1
+        if n:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps(sorted(self._urls), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        return n
+
+
+def mark_seen_urls(crawler_key: str, urls: list[str] | set[str]) -> int:
+    """raw 落库成功后标记已见。"""
+    filename = CRAWLER_SEEN_FILES.get((crawler_key or "").strip().lower())
+    if not filename or not urls:
+        return 0
+    return JsonSeen(filename).add_many(urls)
 
 
 def et_to_beijing(raw: str, pattern: str) -> str:

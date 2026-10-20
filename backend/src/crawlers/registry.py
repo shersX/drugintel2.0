@@ -66,13 +66,26 @@ class _KeyFilter(logging.Filter):
             return False
 
 
+def _asctime_shanghai(seconds: float | None = None):
+    """日志时间统一按 Asia/Shanghai，避免 Docker 容器默认 UTC 导致差 8 小时。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("Asia/Shanghai")
+    if seconds is None:
+        return datetime.now(tz).timetuple()
+    return datetime.fromtimestamp(seconds, tz).timetuple()
+
+
 class _LineCapture(logging.Handler):
     def __init__(self, lines: List[str]):
         super().__init__(level=logging.INFO)
         self.lines = lines
-        self.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
         )
+        formatter.converter = _asctime_shanghai
+        self.setFormatter(formatter)
 
     def emit(self, record: logging.LogRecord) -> None:
         if len(self.lines) >= _LOG_LINE_LIMIT:
@@ -242,18 +255,12 @@ async def run_all_crawlers(
     fetch_details: bool = True,
     page_count: Optional[int] = None,
     concurrency: Optional[int] = None,
+    on_crawler_done: Optional[Callable] = None,
 ) -> CrawlerBatch:
     """
-    并发运行所有启用的爬虫
-    
-    Args:
-        crawler_configs: 自定义爬虫配置，如果为None则使用默认配置
-        fetch_details: 全局设置是否抓取详情（可被单个爬虫配置覆盖）
-        page_count: 全局设置页数（可被单个爬虫配置覆盖）
-        concurrency: 全局设置并发数（可被单个爬虫配置覆盖）
-    
-    Returns:
-        CrawlerBatch: 每个爬虫名称对应的新闻列表，附带 failures 与 logs
+    并发运行所有启用的爬虫。
+
+    on_crawler_done(name, *, items, error, log_text, done, total) 在每个源结束时回调。
     """
     if crawler_configs is None:
         try:
@@ -262,91 +269,125 @@ async def run_all_crawlers(
             crawler_configs = merged_crawler_registry()
         except Exception:
             crawler_configs = CRAWLER_REGISTRY
-    
-    # 筛选启用的爬虫
+
     enabled_crawlers = {
         name: config
         for name, config in crawler_configs.items()
         if config.get("enabled", True)
     }
-    
+
     if not enabled_crawlers:
         logger.warning("没有启用的爬虫")
         return CrawlerBatch()
-    
+
     logger.info("%s", "=" * 80)
     logger.info("开始并发运行 %s 个爬虫", len(enabled_crawlers))
     logger.info("%s", "=" * 80)
-    
-    # 构建任务列表
-    tasks = []
-    crawler_names = []
-    
+
+    task_map: Dict[asyncio.Task, str] = {}
     for name, config in enabled_crawlers.items():
         crawler_func: Callable = config["function"]
         crawler_name = config.get("name", name)
-        
-        # 使用全局设置或单个爬虫配置
         final_page_count = page_count if page_count is not None else config.get("page_count", 1)
-        final_fetch_details = config.get("fetch_details", fetch_details) if "fetch_details" in config else fetch_details
-        final_concurrency = concurrency if concurrency is not None else config.get("concurrency", 5)
-        
+        final_fetch_details = (
+            config.get("fetch_details", fetch_details)
+            if "fetch_details" in config
+            else fetch_details
+        )
+        final_concurrency = (
+            concurrency if concurrency is not None else config.get("concurrency", 5)
+        )
         logger.info("配置爬虫: %s", crawler_name)
         logger.info("  - 页数: %s", final_page_count)
         logger.info("  - 抓取详情: %s", final_fetch_details)
         logger.info("  - 并发数: %s", final_concurrency)
-        
         task_kwargs = {
             "page_count": final_page_count,
             "fetch_details": final_fetch_details,
             "concurrency": final_concurrency,
         }
-        # 创建包含重试策略的任务
-        task = _run_crawler_with_retry(
-            crawler_key=name,
-            crawler_func=crawler_func,
-            kwargs=task_kwargs
+        task = asyncio.create_task(
+            _run_crawler_with_retry(
+                crawler_key=name,
+                crawler_func=crawler_func,
+                kwargs=task_kwargs,
+            )
         )
-        tasks.append(task)
-        crawler_names.append(name)
-    
-    # 并发运行所有爬虫
+        task_map[task] = name
+
     logger.info("%s", "=" * 80)
     logger.info("开始并发执行所有爬虫...")
     logger.info("%s", "=" * 80)
-    
+
     start_time = datetime.now()
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    end_time = datetime.now()
-    
-    # 处理结果
     batch = CrawlerBatch()
     failed_crawlers: Dict[str, str] = {}
     total_news = 0
+    total = len(task_map)
+    done_count = 0
+    # 注意：as_completed() 产出的不是原始 Task，不能做 task_map 反查；用 wait 保留 Task 身份
+    pending: set[asyncio.Task] = set(task_map.keys())
 
-    for name, result in zip(crawler_names, results):
-        if isinstance(result, Exception):
-            error_msg = format_crawler_error(result)
-            logger.error("爬虫 %s 执行失败: %s", name, error_msg)
-            failed_crawlers[name] = error_msg
-            batch[name] = []
-            batch.failures[name] = failed_crawlers[name]
-        else:
-            crawler_data, error, log_text = result
-            if log_text:
-                batch.logs[name] = log_text
-            if error is not None:
-                error_msg = format_crawler_error(error)
+    while pending:
+        done_set, pending = await asyncio.wait(
+            pending, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in done_set:
+            name = task_map[task]
+            done_count += 1
+            try:
+                result = task.result()
+            except Exception as exc:
+                result = exc
+
+            if isinstance(result, Exception):
+                error_msg = format_crawler_error(result)
+                logger.error("爬虫 %s 执行失败: %s", name, error_msg)
                 failed_crawlers[name] = error_msg
-                logger.error("爬虫 %s 重试 %s 次后仍失败: %s", name, MAX_RETRY_ATTEMPTS, error_msg)
                 batch[name] = []
                 batch.failures[name] = failed_crawlers[name]
+                log_text = ""
+                items: List = []
+                err: Optional[str] = error_msg
             else:
-                news_count = len(crawler_data) if crawler_data else 0
-                total_news += news_count
-                logger.info("爬虫 %s 完成，获取 %s 条新闻", name, news_count)
-                batch[name] = crawler_data
+                crawler_data, error, log_text = result
+                if log_text:
+                    batch.logs[name] = log_text
+                if error is not None:
+                    error_msg = format_crawler_error(error)
+                    failed_crawlers[name] = error_msg
+                    logger.error(
+                        "爬虫 %s 重试 %s 次后仍失败: %s",
+                        name,
+                        MAX_RETRY_ATTEMPTS,
+                        error_msg,
+                    )
+                    batch[name] = []
+                    batch.failures[name] = failed_crawlers[name]
+                    items = []
+                    err = error_msg
+                else:
+                    news_count = len(crawler_data) if crawler_data else 0
+                    total_news += news_count
+                    logger.info("爬虫 %s 完成，获取 %s 条新闻", name, news_count)
+                    batch[name] = crawler_data or []
+                    items = list(batch[name])
+                    err = None
 
+            if on_crawler_done is not None:
+                try:
+                    on_crawler_done(
+                        name,
+                        items=items,
+                        error=err,
+                        log_text=log_text or batch.logs.get(name) or "",
+                        done=done_count,
+                        total=total,
+                    )
+                except Exception:
+                    logger.exception("爬虫完成回调失败 key=%s", name)
+
+    end_time = datetime.now()
     elapsed = (end_time - start_time).total_seconds()
     logger.info("%s", "=" * 80)
     if failed_crawlers:

@@ -85,6 +85,26 @@ class LLMEnvConfig:
         )
 
 
+def llm_readiness() -> dict:
+    """采集/流水线启动前检查：启用中的模型配置或环境变量是否具备对话与嵌入密钥。"""
+    chat = LLMEnvConfig.load()
+    emb = EmbeddingEnvConfig.load()
+    missing: list[str] = []
+    if not chat.api_key:
+        missing.append("对话 API Key")
+    if not emb.api_key:
+        missing.append("嵌入 API Key")
+    if missing:
+        return {
+            "ready": False,
+            "message": (
+                f"{'、'.join(missing)} 未设置，无法调用 LLM。"
+                "请先到「模型配置」添加并启用一套配置，或在 .env 中填写 SILICONFLOW_API_KEY。"
+            ),
+        }
+    return {"ready": True, "message": None}
+
+
 @dataclass(frozen=True)
 class EmbeddingEnvConfig:
     api_key: str

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from backend.src.core.config import RedisEnvConfig
+from backend.src.core.config import RedisEnvConfig, llm_readiness
 from backend.src.core.logger import get_logger
 from backend.src.crawlers.registry import CRAWLER_REGISTRY
 from backend.src.db.session import session_scope
@@ -185,6 +185,32 @@ def release_lock(token: str) -> None:
     _redis().eval(_RELEASE_LUA, 1, LOCK_KEY, token)
 
 
+def renew_lock(token: str) -> bool:
+    """进度心跳：仅当锁仍属本轮时续期。"""
+    client = _redis()
+    if client.get(LOCK_KEY) != token:
+        return False
+    client.expire(LOCK_KEY, LOCK_TTL_SEC)
+    return True
+
+
+def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Optional[str] = None) -> None:
+    """短事务写入 CrawlRun.progress，并可续期采集锁。"""
+    if lock_token:
+        try:
+            renew_lock(lock_token)
+        except Exception:
+            logger.warning("续期采集锁失败 run_id=%s", run_id)
+    with session_scope() as session:
+        run = session.get(CrawlRun, run_id)
+        if run is None:
+            return
+        current = dict(run.progress or {})
+        current.update({k: v for k, v in fields.items() if v is not None})
+        current["updated_at"] = now_sh().isoformat()
+        run.progress = current
+
+
 def _available() -> List[Dict[str, Any]]:
     """可选爬虫列表：合并 DB 后仅返回 enabled=true 的源。"""
     try:
@@ -225,6 +251,7 @@ def _run_dict(run: Optional[CrawlRun]) -> Optional[Dict[str, Any]]:
         "error": run.error,
         "pipeline_stats": run.pipeline_stats,
         "cluster_stats": run.cluster_stats,
+        "progress": run.progress,
     }
 
 
@@ -282,17 +309,22 @@ def status_payload() -> Dict[str, Any]:
                 scheduled_today=scheduled_today,
                 now=now,
             )
+        ready = llm_readiness()
+        active = bool(last and last.status == "running")
         return {
             "running": cfg.running,
             "schedule_mode": cfg.schedule_mode,
             "daily_time": cfg.daily_time,
             "crawler_keys": list(cfg.crawler_keys or []),
             "armed_at": _iso(cfg.armed_at),
-            "active": bool(last and last.status == "running"),
+            "active": active,
             "last_run": _run_dict(last),
+            "progress": (last.progress if last else None),
             "next_run_at": _iso(next_at),
             "crawlers": _latest_tasks(session),
             "available": _available(),
+            "llm_ready": ready["ready"],
+            "llm_message": ready["message"],
         }
 
 
@@ -309,6 +341,9 @@ def _enqueue(trigger: str) -> None:
 
 
 def start_schedule(mode: str, daily_time: Optional[str], crawler_keys: List[str]) -> Dict[str, Any]:
+    ready = llm_readiness()
+    if not ready["ready"]:
+        raise CrawlConfigError(ready["message"] or "尚未配置 LLM，请先到「模型配置」设置")
     keys = _validate(mode, daily_time, crawler_keys)
     with session_scope() as session:
         cfg = _get_or_create(session)
@@ -412,7 +447,7 @@ def run_pipeline(trigger: str) -> Dict[str, Any]:
             session.add(run)
             session.flush()
             run_id = int(run.id)
-        payload = asyncio.run(_execute(keys))
+        payload = asyncio.run(_execute(keys, run_id=run_id, lock_token=token))
         _finish(
             run_id,
             payload["status"],
@@ -424,6 +459,14 @@ def run_pipeline(trigger: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.exception("采集轮次失败")
         if run_id is not None:
+            try:
+                update_run_progress(
+                    run_id,
+                    {"stage": "failed", "label": "本轮异常", "detail": str(exc)[:500]},
+                    lock_token=token,
+                )
+            except Exception:
+                pass
             _finish(run_id, "failed", str(exc))
         return {"status": "failed", "error": str(exc)}
     finally:
@@ -433,44 +476,96 @@ def run_pipeline(trigger: str) -> Dict[str, Any]:
             logger.exception("释放采集锁失败")
 
 
-async def _execute(keys: List[str]) -> Dict[str, Any]:
+async def _execute(
+    keys: List[str],
+    *,
+    run_id: Optional[int] = None,
+    lock_token: Optional[str] = None,
+) -> Dict[str, Any]:
     from backend.src.clustering.service import run_clustering
     from backend.src.crawlers.registry import run_all_crawlers
+    from backend.src.crawlers.settings_store import merged_crawler_registry
     from backend.src.monitor.health import record_crawler_task
     from backend.src.processors.pipeline import run_processing_pipeline
-
-    from backend.src.crawlers.settings_store import merged_crawler_registry
 
     merged = merged_crawler_registry()
     configs = {key: merged[key] for key in keys if key in merged}
     if not configs:
         return {"status": "failed", "error": "没有可运行的爬虫"}
 
+    def _progress(fields: Dict[str, Any]) -> None:
+        if run_id is None:
+            return
+        update_run_progress(run_id, fields, lock_token=lock_token)
+
     started = now_sh()
-    batch = await run_all_crawlers(crawler_configs=configs)
-    finished = now_sh()
-    failures = getattr(batch, "failures", {}) or {}
-    logs = getattr(batch, "logs", {}) or {}
-    for key in configs:
-        err = failures.get(key)
-        items = batch.get(key) or []
+    _progress(
+        {
+            "stage": "crawling",
+            "label": "爬取中",
+            "crawlers_done": 0,
+            "crawlers_total": len(configs),
+            "detail": "开始并发爬取",
+        }
+    )
+
+    def on_crawler_done(name, *, items, error, log_text, done, total):
+        finished_at = now_sh()
         record_crawler_task(
-            crawler_name=key,
-            status="failed" if err else "success",
-            total_count=len(items),
-            success_count=0 if err else len(items),
-            error_message=err,
-            log_text=logs.get(key) or None,
+            crawler_name=name,
+            status="failed" if error else "success",
+            total_count=len(items or []),
+            success_count=0 if error else len(items or []),
+            error_message=error,
+            log_text=log_text or None,
             start_time=started,
-            end_time=finished,
+            end_time=finished_at,
         )
+        label = CRAWLER_REGISTRY.get(name, {}).get("name") or name
+        _progress(
+            {
+                "stage": "crawling",
+                "label": "爬取中",
+                "crawlers_done": done,
+                "crawlers_total": total,
+                "detail": f"{label} 完成" + (f"（失败）" if error else f" {len(items or [])} 条"),
+            }
+        )
+
+    batch = await run_all_crawlers(crawler_configs=configs, on_crawler_done=on_crawler_done)
+    failures = getattr(batch, "failures", {}) or {}
 
     if len(failures) == len(configs):
         summary = "；".join(f"{key}: {msg}" for key, msg in failures.items())
+        _progress({"stage": "failed", "label": "全部爬虫失败", "detail": summary})
         return {"status": "failed", "error": f"全部爬虫失败：{summary}"}
 
-    outcome = await run_processing_pipeline(batch, persist=True)
+    _progress({"stage": "filtering", "label": "处理中", "detail": "关键词过滤与落库"})
+    try:
+        outcome = await run_processing_pipeline(
+            batch,
+            persist=True,
+            progress=_progress,
+        )
+    except Exception as exc:
+        logger.exception("流水线失败")
+        _progress({"stage": "failed", "label": "后处理失败", "detail": str(exc)[:500]})
+        note = None
+        if failures:
+            note = "部分爬虫失败：" + "；".join(f"{key}: {msg}" for key, msg in failures.items())
+        err = str(exc)
+        if note:
+            err = f"{note}；{err}"
+        return {
+            "status": "failed",
+            "error": err,
+            "pipeline": None,
+            "cluster": None,
+        }
+
+    _progress({"stage": "clustering", "label": "聚类中"})
     cluster_stats = run_clustering()
+    _progress({"stage": "done", "label": "本轮完成"})
     note = None
     if failures:
         note = "部分爬虫失败：" + "；".join(f"{key}: {msg}" for key, msg in failures.items())

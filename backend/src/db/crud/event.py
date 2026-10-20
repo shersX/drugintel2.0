@@ -47,11 +47,14 @@ def create_event(
 
 
 def fetch_unassigned_news(session: Session) -> List[News]:
+    from backend.src.db.crud.news import news_ready_filter
+
     return list(
         session.scalars(
             select(News)
             .where(News.event_id.is_(None))
             .where(News.embedding.is_not(None))
+            .where(news_ready_filter())
             .order_by(News.publish_time.asc().nulls_last(), News.id.asc())
         ).all()
     )

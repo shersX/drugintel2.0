@@ -37,6 +37,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
       REDIS_URL: "redis://redis:6379/0"
       LLM_KEY_FILE: "/run/drugintel-secrets/llm.key"
@@ -55,6 +56,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
       REDIS_URL: "redis://redis:6379/0"
       LLM_KEY_FILE: "/run/drugintel-secrets/llm.key"
@@ -74,6 +76,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL: "postgresql+psycopg://user:password@db:5432/drugintel"
       REDIS_URL: "redis://redis:6379/0"
       LLM_KEY_FILE: "/run/drugintel-secrets/llm.key"

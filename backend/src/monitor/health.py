@@ -133,13 +133,24 @@ def health_check() -> Dict[str, Any]:
     except Exception as e:
         checks["checks"]["redis"] = {"status": "degraded", "error": str(e)}
 
-    # vector index / embedding coverage
+    # vector coverage：仅统计应向量化的稿件（排除 rejected）
     try:
         with session_scope() as session:
-            total = session.scalar(select(func.count()).select_from(News)) or 0
+            eligible = News.process_status != "rejected"
+            total = session.scalar(select(func.count()).select_from(News).where(eligible)) or 0
             with_emb = (
                 session.scalar(
-                    select(func.count()).select_from(News).where(News.embedding.is_not(None))
+                    select(func.count())
+                    .select_from(News)
+                    .where(eligible, News.embedding.is_not(None))
+                )
+                or 0
+            )
+            rejected = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(News)
+                    .where(News.process_status == "rejected")
                 )
                 or 0
             )
@@ -147,6 +158,7 @@ def health_check() -> Dict[str, Any]:
             "status": "ok",
             "news_total": int(total),
             "news_with_embedding": int(with_emb),
+            "news_rejected": int(rejected),
         }
     except Exception as e:
         checks["ok"] = False

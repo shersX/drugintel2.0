@@ -9,18 +9,28 @@ COPY frontend/ ./
 RUN npm run build
 
 # ============================================================
-# Stage 2: 构建后端（Python + uv）
+# Stage 2: 构建后端（Python + pip）
 # ============================================================
 FROM python:3.12-slim AS backend-build
 
-# 安装 uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
 WORKDIR /app
 
-# 先复制依赖清单，利用 Docker 缓存层
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# 国内镜像，避免 ghcr.io / 默认 PyPI 过慢或失败
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_NO_CACHE_DIR=1
+
+RUN python -m venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# 先只装依赖，利用 Docker 缓存层（不装项目本身，与原先 uv sync --no-install-project 一致）
+COPY pyproject.toml ./
+RUN pip install -U pip && \
+    python -c "import subprocess, tomllib; from pathlib import Path; \
+deps = tomllib.loads(Path('pyproject.toml').read_text())['project']['dependencies']; \
+subprocess.check_call(['pip', 'install', *deps])"
 
 # 复制项目源码
 COPY backend/ ./backend/

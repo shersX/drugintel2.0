@@ -18,7 +18,7 @@
 
     <template v-else>
       <p v-if="!loading && !overview.news_count && session.user?.role === 'admin'" class="card note">
-        库里还没有新闻。到 <router-link to="/monitor">系统监控</router-link> 选择爬虫并启动采集。
+        库里还没有新闻。到 <router-link to="/monitor">爬虫监控</router-link> 选择爬虫并启动采集。
       </p>
       <!-- 01 数字全景 -->
       <section class="reveal" style="--reveal-delay:100ms">

@@ -30,6 +30,7 @@ def vector_search(
                1 - (embedding <=> CAST(:emb AS vector)) AS similarity
         FROM news
         WHERE embedding IS NOT NULL
+          AND process_status = 'ready'
           AND 1 - (embedding <=> CAST(:emb AS vector)) > :threshold
         ORDER BY embedding <=> CAST(:emb AS vector)
         LIMIT :top_k

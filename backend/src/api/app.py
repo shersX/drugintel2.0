@@ -315,7 +315,9 @@ def api_news_list(
     end = _shanghai_day_start(date_to) + timedelta(days=1) if date_to else None
 
     with session_scope() as session:
-        base = select(News)
+        from backend.src.db.crud.news import news_ready_filter
+
+        base = select(News).where(news_ready_filter())
         if keys:
             base = base.where(News.crawler.in_(keys))
         if start is not None:
@@ -351,9 +353,11 @@ def api_news_list(
 
 @app.get("/api/news/{news_id}")
 def api_news_detail(news_id: int):
+    from backend.src.db.crud.news import PROCESS_READY, news_ready_filter
+
     with session_scope() as session:
         news = session.get(News, news_id)
-        if news is None:
+        if news is None or news.process_status != PROCESS_READY:
             raise HTTPException(404, "news not found")
         related = []
         if news.event_id:
@@ -361,6 +365,7 @@ def api_news_detail(news_id: int):
                 select(News)
                 .where(News.event_id == news.event_id)
                 .where(News.id != news.id)
+                .where(news_ready_filter())
                 .limit(20)
             ).all()
             related = [{"id": r.id, "title": r.title} for r in related_rows]
@@ -606,6 +611,24 @@ def api_crawl_config(_actor: Actor = Depends(admin_actor)):
 @app.get("/api/crawl/status")
 def api_crawl_status(_actor: Actor = Depends(current_actor)):
     return ok(status_payload())
+
+
+@app.post("/api/crawl/reprocess")
+async def api_crawl_reprocess(
+    limit: int = Query(50, ge=1, le=200),
+    actor: Actor = Depends(admin_actor),
+):
+    """手动补跑积压的 raw/failed 新闻（摘要+向量）。"""
+    from backend.src.processors.pipeline import reprocess_pending_news
+
+    stats = await reprocess_pending_news(limit=limit)
+    record_audit(
+        actor_id=actor.id,
+        action="crawl_reprocess",
+        target="news",
+        detail=f"limit={limit}",
+    )
+    return ok(stats)
 
 
 @app.get("/api/llm/profiles")

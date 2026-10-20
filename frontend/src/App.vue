@@ -133,7 +133,7 @@ const navItems = computed(() => {
   ]
   if (session.user?.role === 'admin') {
     items.push(
-      { to: '/monitor', label: '系统监控' },
+      { to: '/monitor', label: '爬虫监控' },
       { to: '/settings', label: '模型配置' },
       { to: '/users', label: '用户' },
     )
@@ -171,6 +171,7 @@ async function logout() {
   padding: 0;
 }
 .page.compact {
+  max-width: 1360px;
   padding-top: 12px;
   padding-bottom: 16px;
 }

@@ -14,17 +14,23 @@ from backend.src.models.news import News
 
 
 def overview_stats(session: Session) -> Dict[str, Any]:
-    news_count = session.scalar(select(func.count()).select_from(News)) or 0
+    # 列表 / RAG / 聚类只消费 ready；概览指标与之对齐
+    ready = News.process_status == "ready"
+    news_count = session.scalar(select(func.count()).select_from(News).where(ready)) or 0
     event_count = session.scalar(select(func.count()).select_from(Event)) or 0
     with_emb = (
         session.scalar(
-            select(func.count()).select_from(News).where(News.embedding.is_not(None))
+            select(func.count())
+            .select_from(News)
+            .where(ready, News.embedding.is_not(None))
         )
         or 0
     )
     unassigned = (
         session.scalar(
-            select(func.count()).select_from(News).where(News.event_id.is_(None))
+            select(func.count())
+            .select_from(News)
+            .where(ready, News.event_id.is_(None))
         )
         or 0
     )

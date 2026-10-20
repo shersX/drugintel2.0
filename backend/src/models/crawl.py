@@ -38,3 +38,4 @@ class CrawlRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     pipeline_stats: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     cluster_stats: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    progress: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)

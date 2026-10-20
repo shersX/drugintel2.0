@@ -1,6 +1,6 @@
 import logging
 
-from scrapling.fetchers import AsyncDynamicSession
+from scrapling.fetchers import AsyncStealthySession
 from scrapling.spiders import Request, Response, Spider
 
 from backend.src.crawlers.scrapling_support import (
@@ -49,7 +49,7 @@ class PharmcubeSpider(Spider):
         session_kwargs = {"headless": True, "network_idle": True, "timeout": 60_000}
         if self.user_agent:
             session_kwargs["useragent"] = self.user_agent
-        manager.add("browser", AsyncDynamicSession(**session_kwargs))
+        manager.add("browser", AsyncStealthySession(**session_kwargs))
 
     async def start_requests(self):
         yield Request(
@@ -96,8 +96,7 @@ class PharmcubeSpider(Spider):
             )
 
     async def parse_detail(self, response: Response):
-        seen_url = response.meta.get("seen_url") or response.url
-        self.seen.add(seen_url)
+        # 有效稿：raw 落库成功后再 mark_seen_urls
         content_html = fragment_html(response.css("div.news-detail-page div.content"))
         yield self._item(
             response.meta.get("title", ""),

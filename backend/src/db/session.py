@@ -79,6 +79,18 @@ def rebuild_vector_columns(dim: int, connection) -> None:
     connection.execute(text("DROP INDEX IF EXISTS news_embedding_idx"))
     connection.execute(text("DROP INDEX IF EXISTS event_centroid_idx"))
     connection.execute(text("UPDATE news SET embedding = NULL"))
+    # 清向量后不可再当 ready，便于补跑摘要/向量
+    connection.execute(
+        text(
+            """
+            UPDATE news
+            SET process_status = 'failed'
+            WHERE process_status = 'ready'
+              AND content IS NOT NULL
+              AND btrim(content) <> ''
+            """
+        )
+    )
     connection.execute(text("UPDATE event SET centroid_embedding = NULL"))
     connection.execute(text(f"ALTER TABLE news ALTER COLUMN embedding TYPE vector({width})"))
     connection.execute(

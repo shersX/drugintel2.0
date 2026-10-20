@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 
-from sqlalchemy import CHAR, cast, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from sqlalchemy.sql.elements import ColumnElement
@@ -20,14 +20,18 @@ def make_search_tsv_expr(
     abstract: Optional[str] = None,
     content: Optional[str] = None,
 ) -> ColumnElement[Any]:
-    """生成带 A/B/C 权重的 tsvector SQL 表达式。"""
+    """生成带 A/B/C 权重的 tsvector SQL 表达式。
+
+    权重必须是 PostgreSQL 的 \"char\" 字面量（'A'），不能用 CHAR/character 类型，
+    否则会报 setweight(tsvector, character) does not exist。
+    """
     title_t = tokens_to_ts_text(title or "")
     abstract_t = tokens_to_ts_text(abstract or "")
     content_t = tokens_to_ts_text(content or "")
     return (
-        func.setweight(func.to_tsvector("simple", title_t), cast("A", CHAR(1)))
-        .op("||")(func.setweight(func.to_tsvector("simple", abstract_t), cast("B", CHAR(1))))
-        .op("||")(func.setweight(func.to_tsvector("simple", content_t), cast("C", CHAR(1))))
+        func.setweight(func.to_tsvector("simple", title_t), text("'A'"))
+        .op("||")(func.setweight(func.to_tsvector("simple", abstract_t), text("'B'")))
+        .op("||")(func.setweight(func.to_tsvector("simple", content_t), text("'C'")))
     )
 
 

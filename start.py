@@ -71,7 +71,21 @@ def _npm() -> str:
 
 
 def _ensure_frontend_deps() -> None:
-    if (FRONTEND / "node_modules").exists():
+    """node_modules 存在不等于依赖齐全（例如后来在 package.json 里加了 marked）。"""
+    import json
+
+    pkg_path = FRONTEND / "package.json"
+    need_install = not (FRONTEND / "node_modules").exists()
+    if not need_install and pkg_path.exists():
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        names = {
+            *(pkg.get("dependencies") or {}),
+            *(pkg.get("devDependencies") or {}),
+        }
+        need_install = any(
+            not (FRONTEND / "node_modules" / name).exists() for name in names
+        )
+    if not need_install:
         return
     print("安装前端依赖…")
     subprocess.run([_npm(), "install"], cwd=FRONTEND, check=True)

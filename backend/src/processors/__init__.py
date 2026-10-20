@@ -8,7 +8,7 @@ from backend.src.processors.filter import (
     load_keyword_lexicon,
     load_keywords_config,
 )
-from backend.src.processors.pipeline import run_processing_pipeline
+from backend.src.processors.pipeline import reprocess_pending_news, run_processing_pipeline
 from backend.src.processors.relevance import (
     SKIP_RELEVANCE_CRAWLERS,
     isrelated_for_item,
@@ -27,4 +27,5 @@ __all__ = [
     "summarize_items",
     "embed_items",
     "run_processing_pipeline",
+    "reprocess_pending_news",
 ]

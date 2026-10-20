@@ -30,6 +30,19 @@ def ensure_schema() -> None:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE crawler_task ADD COLUMN IF NOT EXISTS log_text TEXT"))
         conn.execute(text("ALTER TABLE news ADD COLUMN IF NOT EXISTS content_html TEXT"))
+        conn.execute(text("ALTER TABLE crawl_run ADD COLUMN IF NOT EXISTS progress JSONB"))
+        conn.execute(
+            text(
+                "ALTER TABLE news ADD COLUMN IF NOT EXISTS process_status VARCHAR(20) "
+                "NOT NULL DEFAULT 'ready'"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_news_process_status ON news (process_status)"
+            )
+        )
+    _backfill_news_process_status(engine)
     _ensure_llm_profile_columns(engine)
     _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
@@ -237,6 +250,53 @@ def _split_html_content_into_content_html(engine) -> None:
             {"name": "news_content_html_split_v1"},
         )
     logger.info("已拆分 content→content_html %s 条", changed)
+
+
+def _backfill_news_process_status(engine) -> None:
+    """存量：有向量→ready；有正文无向量→raw（可补跑）。只在首次补丁时跑。"""
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.news')")).scalar() is None:
+            return
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS schema_patch (
+                    name TEXT PRIMARY KEY
+                )
+                """
+            )
+        )
+        done = conn.execute(
+            text("SELECT 1 FROM schema_patch WHERE name = 'news_process_status_v1'")
+        ).scalar()
+        if done:
+            return
+        conn.execute(
+            text(
+                """
+                UPDATE news
+                SET process_status = 'ready'
+                WHERE embedding IS NOT NULL
+                  AND (process_status IS NULL OR process_status = 'ready' OR process_status = '')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE news
+                SET process_status = 'raw'
+                WHERE embedding IS NULL
+                  AND content IS NOT NULL
+                  AND btrim(content) <> ''
+                  AND process_status = 'ready'
+                """
+            )
+        )
+        conn.execute(
+            text("INSERT INTO schema_patch(name) VALUES ('news_process_status_v1') ON CONFLICT DO NOTHING")
+        )
+    logger.info("已回填 news.process_status")
 
 
 def _ensure_search_tsv(engine) -> None:

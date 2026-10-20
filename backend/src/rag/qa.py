@@ -74,7 +74,7 @@ async def ask(
             }
             for n, score in hits
         ]
-        answer = await generate_answer(query, hits, history=history)
+        answer = await generate_answer(query, hits, history=history, intent=intent)
         append_message(session, conversation_id=cid, role="user", content=query)
         append_message(
             session,
@@ -133,7 +133,9 @@ async def ask_stream(
             "sources": sources,
         }
         parts: List[str] = []
-        async for piece in generate_answer_stream(query, hits, history=history):
+        async for piece in generate_answer_stream(
+            query, hits, history=history, intent=intent
+        ):
             parts.append(piece)
             yield {"type": "token", "content": piece}
         answer = "".join(parts)

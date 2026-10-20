@@ -30,6 +30,8 @@ class News(Base, TimestampMixin):
     matched_keywords: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     embedding = mapped_column(Vector(), nullable=True)
     search_tsv = mapped_column(TSVECTOR, nullable=True)
+    # raw → rejected|failed|ready；列表/RAG/聚类只消费 ready
+    process_status: Mapped[str] = mapped_column(String(20), nullable=False, default="ready", index=True)
     is_representative: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     event_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("event.id", ondelete="SET NULL"), nullable=True, index=True
