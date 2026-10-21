@@ -506,6 +506,8 @@ async def api_chat_ask(body: AskRequest, actor: Actor = Depends(current_actor)):
             "intent": result.intent.intent.value,
             "answer": result.answer,
             "sources": result.sources,
+            "search_query": result.search_query,
+            "clarify": result.clarify,
         }
     )
 

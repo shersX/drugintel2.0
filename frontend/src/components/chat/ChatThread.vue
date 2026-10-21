@@ -23,8 +23,13 @@
     </div>
 
     <template v-for="(m, i) in messages" :key="i">
-      <div class="msg" :class="m.role">
-        <div class="bubble">
+      <div
+        v-if="m.role === 'user' || m.content || m.sources?.length || m.error || m.clarify"
+        class="msg"
+        :class="m.role"
+      >
+        <div class="bubble" :class="{ clarify: m.clarify }">
+          <div v-if="m.clarify && m.role === 'assistant'" class="clarify-tag">需要补充</div>
           <div v-if="m.role === 'user'" class="answer plain">{{ m.content }}</div>
           <div
             v-else-if="m.content"
@@ -73,17 +78,21 @@
 
           <div v-if="m.error" class="msg-error">{{ m.error }}</div>
 
-          <div v-if="m.role === 'assistant' && m.content" class="msg-actions">
+          <div v-if="m.role === 'assistant' && m.content && !loading" class="msg-actions">
             <button type="button" class="ghost" @click="$emit('export', m)">导出报告</button>
           </div>
         </div>
       </div>
     </template>
 
-    <div v-if="loading" class="msg assistant">
+    <!-- 流式正文已出现后不再叠一层阶段条，避免双框 -->
+    <div v-if="showStageBubble" class="msg assistant">
       <div class="bubble thinking">
         <span></span><span></span><span></span>
-        <em>正在检索情报库…</em>
+        <div class="thinking-copy">
+          <em>{{ stageLabel }}</em>
+          <small v-if="searchQuery">检索：{{ searchQuery }}</small>
+        </div>
       </div>
     </div>
   </div>
@@ -91,14 +100,45 @@
 
 <script setup>
 import { marked } from 'marked'
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 marked.setOptions({ breaks: true, gfm: true })
+
+const STAGE_LABELS = {
+  intent: '正在识别意图…',
+  rewrite: '正在优化问法…',
+  clarify: '需要您补充信息…',
+  retrieve: '正在检索…',
+  rerank: '正在重排与筛选…',
+  retry: '原句结果不足，准备优化问法…',
+  generate: '正在生成回答…',
+}
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  loadingStage: { type: String, default: '' },
+  searchQuery: { type: String, default: '' },
   suggestions: { type: Array, default: () => [] },
+})
+
+const stageLabel = computed(() => {
+  // 有改写检索词时，retrieve 表示补充检索而非原句
+  if (props.loadingStage === 'retrieve' && props.searchQuery) {
+    return '正在优化问法并补充检索…'
+  }
+  if (props.loadingStage === 'rerank' && props.searchQuery) {
+    return '正在按优化问法重排筛选…'
+  }
+  return STAGE_LABELS[props.loadingStage] || '正在处理…'
+})
+
+const showStageBubble = computed(() => {
+  if (!props.loading) return false
+  const last = props.messages[props.messages.length - 1]
+  // 已有流式正文时只保留回答气泡，阶段条让位
+  if (last?.role === 'assistant' && last.content) return false
+  return true
 })
 
 defineEmits(['suggest', 'export'])
@@ -212,6 +252,19 @@ defineExpose({ scrollDown })
   border-bottom-left-radius: var(--sp-1);
   color: var(--ink);
   box-shadow: var(--shadow-sm);
+}
+.msg.assistant .bubble.clarify {
+  border-color: color-mix(in srgb, var(--brass) 45%, var(--rule));
+  background: color-mix(in srgb, var(--brass) 8%, var(--surface));
+}
+.clarify-tag {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass, #9a6b2f);
+  margin-bottom: 8px;
 }
 .answer.plain { white-space: pre-wrap; }
 .answer.md :deep(p) { margin: 0 0 0.7em; }
@@ -369,12 +422,23 @@ defineExpose({ scrollDown })
 .msg-actions { margin-top: var(--sp-3); display: flex; gap: var(--sp-2); }
 
 .thinking { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-mute); }
+.thinking-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .thinking em { font-style: normal; font-size: var(--fs-sm); }
+.thinking small {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 48ch;
+}
 .thinking span {
   width: 7px; height: 7px;
   border-radius: 50%;
   background: var(--moss);
   animation: bounce 1.2s ease-in-out infinite;
+  flex: none;
 }
 .thinking span:nth-child(2) { animation-delay: 150ms; }
 .thinking span:nth-child(3) { animation-delay: 300ms; }

@@ -27,6 +27,8 @@
         ref="threadRef"
         :messages="messages"
         :loading="loading"
+        :loading-stage="loadingStage"
+        :search-query="activeSearchQuery"
         :suggestions="suggestions"
         @suggest="onSuggest"
         @export="exportReport"
@@ -55,8 +57,142 @@ const messages = ref([])
 const conversationId = ref('')
 const conversations = ref([])
 const loading = ref(false)
+const loadingStage = ref('')
+const activeSearchQuery = ref('')
 const drawerOpen = ref(false)
 const threadRef = ref(null)
+
+function chatWsUrl() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/ws/chat`
+}
+
+function askViaRest(q) {
+  return api.ask({
+    query: q,
+    conversation_id: conversationId.value || null,
+  })
+}
+
+function askViaWs(q) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let assistantIndex = -1
+    let pendingSources = []
+    const originalQuery = q
+    const ws = new WebSocket(chatWsUrl())
+
+    const fail = (err) => {
+      if (settled) return
+      settled = true
+      try { ws.close() } catch { /* ignore */ }
+      reject(err instanceof Error ? err : new Error(String(err || 'WebSocket 失败')))
+    }
+
+    const finish = (payload) => {
+      if (settled) return
+      settled = true
+      try { ws.close() } catch { /* ignore */ }
+      resolve(payload)
+    }
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        query: q,
+        conversation_id: conversationId.value || null,
+      }))
+    }
+
+    ws.onerror = () => fail(new Error('无法建立问答连接'))
+    ws.onclose = () => {
+      if (!settled) fail(new Error('问答连接已断开'))
+    }
+
+    ws.onmessage = (ev) => {
+      let event
+      try {
+        event = JSON.parse(ev.data)
+      } catch {
+        fail(new Error('服务端返回无效数据'))
+        return
+      }
+      const type = event.type
+      if (type === 'error') {
+        fail(new Error(event.message || '问答失败'))
+        return
+      }
+      if (type === 'stage') {
+        loadingStage.value = event.stage || ''
+        // 仅当改写后的检索词与原句不同时展示
+        if (event.search_query && event.search_query !== originalQuery) {
+          activeSearchQuery.value = event.search_query
+        }
+        return
+      }
+      if (type === 'clarify') {
+        loadingStage.value = 'clarify'
+        if (event.search_query && event.search_query !== originalQuery) {
+          activeSearchQuery.value = event.search_query
+        }
+        const cid = event.conversation_id || event.session_id || conversationId.value
+        if (cid) conversationId.value = cid
+        messages.value.push({
+          role: 'assistant',
+          content: event.question || '请补充更多信息。',
+          sources: [],
+          clarify: true,
+        })
+        finish({
+          conversation_id: cid,
+          clarify: true,
+          answer: event.question,
+        })
+        return
+      }
+      if (type === 'meta') {
+        const cid = event.conversation_id || event.session_id || conversationId.value
+        if (cid) conversationId.value = cid
+        if (event.search_query && event.search_query !== originalQuery) {
+          activeSearchQuery.value = event.search_query
+        }
+        loadingStage.value = 'generate'
+        pendingSources = event.sources || []
+        // 不预建空气泡；首个 token 再创建消息，避免与阶段条叠成双框
+        return
+      }
+      if (type === 'token') {
+        if (assistantIndex < 0) {
+          messages.value.push({ role: 'assistant', content: '', sources: [] })
+          assistantIndex = messages.value.length - 1
+        }
+        const row = messages.value[assistantIndex]
+        if (row) row.content = (row.content || '') + (event.content || '')
+        return
+      }
+      if (type === 'done') {
+        const cid = event.conversation_id || event.session_id || conversationId.value
+        if (cid) conversationId.value = cid
+        if (event.clarify) {
+          finish({ conversation_id: cid, clarify: true, answer: event.answer })
+          return
+        }
+        if (assistantIndex >= 0) {
+          const row = messages.value[assistantIndex]
+          if (row) {
+            if (event.answer) row.content = event.answer
+            const finalSources = event.sources?.length ? event.sources : pendingSources
+            row.sources = finalSources || []
+          }
+        }
+        finish({
+          conversation_id: cid,
+          clarify: false,
+          answer: event.answer,
+        })
+      }
+    }
+  })
+}
 
 const suggestions = [
   '最近有哪些医药新闻？',
@@ -190,20 +326,35 @@ async function send() {
   messages.value.push({ role: 'user', content: q })
   query.value = ''
   loading.value = true
+  loadingStage.value = 'intent'
+  activeSearchQuery.value = ''
   threadRef.value?.scrollDown?.()
   try {
-    const data = await api.ask({
-      query: q,
-      conversation_id: conversationId.value || null,
-    })
-    const cid = data.conversation_id || data.session_id || conversationId.value
-    conversationId.value = cid
-    messages.value.push({
-      role: 'assistant',
-      content: data.answer || '（未获取到回答）',
-      sources: data.sources || [],
-    })
-    syncQuery(cid)
+    let data
+    try {
+      data = await askViaWs(q)
+    } catch (wsErr) {
+      // WebSocket 不可用时回退 REST（无阶段动画）
+      loadingStage.value = 'retrieve'
+      data = await askViaRest(q)
+      const cid = data.conversation_id || data.session_id || conversationId.value
+      conversationId.value = cid
+      messages.value.push({
+        role: 'assistant',
+        content: data.answer || '（未获取到回答）',
+        sources: data.sources || [],
+        clarify: Boolean(data.clarify),
+      })
+      if (data.search_query) activeSearchQuery.value = data.search_query
+      syncQuery(cid)
+      await loadList()
+      return
+    }
+    const cid = data.conversation_id || conversationId.value
+    if (cid) {
+      conversationId.value = cid
+      syncQuery(cid)
+    }
     await loadList()
   } catch (e) {
     if (e.status === 401) {
@@ -219,6 +370,8 @@ async function send() {
     })
   } finally {
     loading.value = false
+    loadingStage.value = ''
+    activeSearchQuery.value = ''
     threadRef.value?.scrollDown?.()
   }
 }

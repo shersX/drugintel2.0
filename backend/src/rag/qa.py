@@ -1,9 +1,9 @@
-"""RAG 问答编排（含重排与多轮 + PG 会话持久化）。"""
+"""RAG 问答编排：意图 → 原句检索 →（不足则改写再检索|澄清）→ 生成；支持阶段事件流。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Sequence, Tuple
 
 from backend.src.db.crud.chat import (
     append_message,
@@ -12,12 +12,16 @@ from backend.src.db.crud.chat import (
     touch_conversation,
 )
 from backend.src.db.session import session_scope
-from backend.src.rag.generator import generate_answer, generate_answer_stream
-from backend.src.rag.intent import IntentResult
+from backend.src.models.news import News
+from backend.src.rag.generator import generate_answer_stream
+from backend.src.rag.intent import Intent, IntentResult, classify_intent
+from backend.src.rag.query_rewrite import clarify_after_empty, rewrite_query
 from backend.src.rag.reranker import rerank
-from backend.src.rag.retriever import retrieve_for_query
+from backend.src.rag.retriever import retrieve_hits
 from backend.src.rag.settings import load_rag_settings
 from backend.src.rag.threshold import filter_by_relevance
+
+Hit = Tuple[News, float]
 
 
 @dataclass
@@ -27,6 +31,8 @@ class AskResult:
     sources: List[Dict[str, Any]]
     session_id: str
     conversation_id: str
+    search_query: Optional[str] = None
+    clarify: bool = False
 
 
 def _resolve_conversation_id(
@@ -38,9 +44,42 @@ def _resolve_conversation_id(
 
 
 def _resolve_top_k(top_k: Optional[int] = None) -> int:
-    """以管理员配置为准；忽略客户端传入。"""
     settings = load_rag_settings()
     return settings.top_k
+
+
+def _sources_from_hits(hits: Sequence[Hit]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": n.id,
+            "title": n.title,
+            "score": float(score),
+            "detail_url": n.detail_url,
+            "abstract": (n.abstract or "")[:200],
+        }
+        for n, score in hits
+    ]
+
+
+def _stage(
+    stage: str,
+    *,
+    detail: str = "",
+    intent: Optional[str] = None,
+    search_query: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"type": "stage", "stage": stage}
+    if detail:
+        payload["detail"] = detail
+    if intent:
+        payload["intent"] = intent
+    if search_query:
+        payload["search_query"] = search_query
+    return payload
+
+
+def _hits_ok(hits: Sequence[Hit]) -> bool:
+    return len(hits) > 0
 
 
 async def ask(
@@ -51,45 +90,74 @@ async def ask(
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> AskResult:
-    resolved_k = _resolve_top_k(top_k)
-    cid_hint = _resolve_conversation_id(
-        conversation_id=conversation_id, session_id=session_id
-    )
-    with session_scope() as session:
-        conv = ensure_conversation(
-            session, user_id=user_id, conversation_id=cid_hint
-        )
-        cid = conv.id
-        history = get_history_messages(session, conversation_id=cid, limit=40)
-        intent, hits = await retrieve_for_query(session, query, top_k=resolved_k * 2)
-        hits = await rerank(query, hits, top_k=resolved_k)
-        hits = filter_by_relevance(hits)
-        sources = [
-            {
-                "id": n.id,
-                "title": n.title,
-                "score": float(score),
-                "detail_url": n.detail_url,
-                "abstract": (n.abstract or "")[:200],
-            }
-            for n, score in hits
-        ]
-        answer = await generate_answer(query, hits, history=history, intent=intent)
-        append_message(session, conversation_id=cid, role="user", content=query)
-        append_message(
-            session,
-            conversation_id=cid,
-            role="assistant",
-            content=answer,
-            sources=sources or None,
-        )
-        touch_conversation(session, conversation=conv, title_from_query=query)
+    """同步问答（聚合流式路径结果）。"""
+    final: Dict[str, Any] = {
+        "answer": "",
+        "sources": [],
+        "intent": None,
+        "search_query": None,
+        "clarify": False,
+        "session_id": "",
+        "conversation_id": "",
+    }
+    async for event in ask_stream(
+        query,
+        user_id=user_id,
+        top_k=top_k,
+        conversation_id=conversation_id,
+        session_id=session_id,
+    ):
+        et = event.get("type")
+        if et == "meta":
+            final["sources"] = event.get("sources") or []
+            final["search_query"] = event.get("search_query")
+            if event.get("intent"):
+                final["intent_value"] = event["intent"]
+            final["session_id"] = event.get("session_id") or final["session_id"]
+            final["conversation_id"] = (
+                event.get("conversation_id") or final["conversation_id"]
+            )
+        elif et == "clarify":
+            final["clarify"] = True
+            final["answer"] = event.get("question") or ""
+            final["search_query"] = event.get("search_query")
+            if event.get("intent"):
+                final["intent_value"] = event["intent"]
+            final["session_id"] = event.get("session_id") or final["session_id"]
+            final["conversation_id"] = (
+                event.get("conversation_id") or final["conversation_id"]
+            )
+        elif et == "token":
+            if not final["clarify"]:
+                final["answer"] = (final["answer"] or "") + (event.get("content") or "")
+        elif et == "done":
+            if event.get("answer") and not final["clarify"]:
+                final["answer"] = event["answer"]
+            if event.get("clarify"):
+                final["clarify"] = True
+            if event.get("sources") is not None:
+                final["sources"] = event.get("sources") or []
+            if event.get("search_query"):
+                final["search_query"] = event.get("search_query")
+            final["session_id"] = event.get("session_id") or final["session_id"]
+            final["conversation_id"] = (
+                event.get("conversation_id") or final["conversation_id"]
+            )
+
+    intent_value = final.get("intent_value") or Intent.NEWS_QUERY.value
+    try:
+        intent_enum = Intent(intent_value)
+    except ValueError:
+        intent_enum = Intent.NEWS_QUERY
+    intent = IntentResult(intent=intent_enum, confidence=0.6, raw=query)
     return AskResult(
         intent=intent,
-        answer=answer,
-        sources=sources,
-        session_id=cid,
-        conversation_id=cid,
+        answer=final["answer"] or "",
+        sources=list(final["sources"] or []),
+        session_id=str(final["session_id"] or ""),
+        conversation_id=str(final["conversation_id"] or ""),
+        search_query=final.get("search_query"),
+        clarify=bool(final.get("clarify")),
     )
 
 
@@ -101,7 +169,10 @@ async def ask_stream(
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
-    """先 yield meta，再 yield token，最后 yield done。"""
+    """
+    事件顺序：
+    stage* → (clarify + done) | (meta → stage generate → token* → done)
+    """
     resolved_k = _resolve_top_k(top_k)
     cid_hint = _resolve_conversation_id(
         conversation_id=conversation_id, session_id=session_id
@@ -112,27 +183,127 @@ async def ask_stream(
         )
         cid = conv.id
         history = get_history_messages(session, conversation_id=cid, limit=40)
-        intent, hits = await retrieve_for_query(session, query, top_k=resolved_k * 2)
-        hits = await rerank(query, hits, top_k=resolved_k)
-        hits = filter_by_relevance(hits)
-        sources = [
-            {
-                "id": n.id,
-                "title": n.title,
-                "score": float(score),
-                "detail_url": n.detail_url,
-                "abstract": (n.abstract or "")[:200],
+        intent = classify_intent(query)
+        yield _stage(
+            "intent",
+            detail=intent.intent.value,
+            intent=intent.intent.value,
+        )
+
+        # 闲聊：不检索
+        if intent.intent == Intent.CHITCHAT:
+            yield _stage("generate", intent=intent.intent.value)
+            parts: List[str] = []
+            async for piece in generate_answer_stream(
+                query, [], history=history, intent=intent
+            ):
+                parts.append(piece)
+                yield {"type": "token", "content": piece}
+            answer = "".join(parts)
+            append_message(session, conversation_id=cid, role="user", content=query)
+            append_message(
+                session, conversation_id=cid, role="assistant", content=answer
+            )
+            touch_conversation(session, conversation=conv, title_from_query=query)
+            yield {
+                "type": "done",
+                "session_id": cid,
+                "conversation_id": cid,
+                "answer": answer,
+                "clarify": False,
+                "sources": [],
             }
-            for n, score in hits
-        ]
+            return
+
+        async def _emit_clarify(question: str, used_query: str) -> AsyncIterator[Dict[str, Any]]:
+            append_message(session, conversation_id=cid, role="user", content=query)
+            append_message(
+                session, conversation_id=cid, role="assistant", content=question
+            )
+            touch_conversation(session, conversation=conv, title_from_query=query)
+            yield {
+                "type": "clarify",
+                "question": question,
+                "intent": intent.intent.value,
+                "search_query": used_query,
+                "session_id": cid,
+                "conversation_id": cid,
+            }
+            yield {
+                "type": "done",
+                "session_id": cid,
+                "conversation_id": cid,
+                "answer": question,
+                "clarify": True,
+                "sources": [],
+            }
+
+        # 1) 原句检索
+        search_query = query
+        sources: List[Dict[str, Any]] = []
+        yield _stage("retrieve", intent=intent.intent.value)
+        raw_hits = await retrieve_hits(session, search_query, top_k=resolved_k * 2)
+        yield _stage("rerank", intent=intent.intent.value)
+        hits = await rerank(search_query, raw_hits, top_k=resolved_k)
+        hits = filter_by_relevance(hits)
+
+        # 2) 不足 → 改写再检索（最多一轮）
+        if not _hits_ok(hits):
+            yield _stage(
+                "retry",
+                detail="原句检索不足，正在优化问法",
+                intent=intent.intent.value,
+            )
+            yield _stage("rewrite", intent=intent.intent.value)
+            rewritten = await rewrite_query(
+                query, history=history, intent=intent, empty_retry=True
+            )
+            search_query = rewritten.search_query or query
+            if rewritten.need_clarify and rewritten.clarify_question:
+                async for ev in _emit_clarify(rewritten.clarify_question, search_query):
+                    yield ev
+                return
+
+            yield _stage(
+                "retrieve",
+                detail="使用优化问法补充检索",
+                intent=intent.intent.value,
+                search_query=search_query,
+            )
+            raw_hits = await retrieve_hits(
+                session, search_query, top_k=resolved_k * 2
+            )
+            yield _stage(
+                "rerank",
+                intent=intent.intent.value,
+                search_query=search_query,
+            )
+            hits = await rerank(search_query, raw_hits, top_k=resolved_k)
+            hits = filter_by_relevance(hits)
+
+        if not _hits_ok(hits):
+            question = await clarify_after_empty(
+                query, history=history, search_query=search_query
+            )
+            async for ev in _emit_clarify(question, search_query):
+                yield ev
+            return
+
+        sources = _sources_from_hits(hits)
         yield {
             "type": "meta",
             "session_id": cid,
             "conversation_id": cid,
             "intent": intent.intent.value,
             "sources": sources,
+            "search_query": search_query if search_query != query else None,
         }
-        parts: List[str] = []
+        yield _stage(
+            "generate",
+            intent=intent.intent.value,
+            search_query=search_query if search_query != query else None,
+        )
+        parts = []
         async for piece in generate_answer_stream(
             query, hits, history=history, intent=intent
         ):
@@ -148,4 +319,12 @@ async def ask_stream(
             sources=sources or None,
         )
         touch_conversation(session, conversation=conv, title_from_query=query)
-    yield {"type": "done", "session_id": cid, "conversation_id": cid, "answer": answer}
+    yield {
+        "type": "done",
+        "session_id": cid,
+        "conversation_id": cid,
+        "answer": answer,
+        "clarify": False,
+        "search_query": search_query if search_query != query else None,
+        "sources": sources,
+    }
