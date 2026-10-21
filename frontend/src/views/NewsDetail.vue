@@ -230,7 +230,8 @@ watch(() => props.id, load)
 
 .back-fab {
   position: fixed;
-  right: max(20px, calc((100vw - 1120px) / 2 + 16px));
+  /* 右移避让全站问答 FAB（约 52px + 间距） */
+  right: max(88px, calc((100vw - 1120px) / 2 + 84px));
   bottom: 28px;
   z-index: 35;
   width: 48px;

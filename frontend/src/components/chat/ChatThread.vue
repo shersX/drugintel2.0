@@ -52,6 +52,7 @@
               >
                 <div class="source-top">
                   <span class="source-id">[{{ si + 1 }}]</span>
+                  <span v-if="s.page_context" class="page-badge">本页</span>
                   <span class="source-title">{{ s.title }}</span>
                   <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
                 </div>
@@ -62,6 +63,7 @@
               <div v-else class="source-main">
                 <div class="source-top">
                   <span class="source-id">[{{ si + 1 }}]</span>
+                  <span v-if="s.page_context" class="page-badge">本页</span>
                   <span class="source-title">{{ s.title }}</span>
                   <span class="score">{{ (s.score ?? 0).toFixed?.(2) ?? s.score }}</span>
                 </div>
@@ -402,6 +404,15 @@ defineExpose({ scrollDown })
 }
 .source-top { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); }
 .source-id { font-family: var(--font-mono); color: var(--moss); font-size: var(--fs-xs); }
+.page-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--lime) 35%, transparent);
+  color: var(--pine);
+}
 .source-title { flex: 1; min-width: 0; }
 .score { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--ink-mute); }
 .score-track {

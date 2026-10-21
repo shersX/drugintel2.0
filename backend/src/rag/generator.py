@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator, List, Sequence, Tuple
+from typing import AsyncIterator, List, Optional, Sequence, Tuple
 
 from backend.src.llm.client import SiliconFlowClient
 from backend.src.models.news import News
@@ -13,6 +13,7 @@ SYSTEM_PROMPT = """你是医药情报助手。请仅依据提供的新闻摘要�
 1. 回答简洁、事实准确，使用中文
 2. 若检索结果不足以回答，明确说明资料不足
 3. 在关键结论后用 [n] 标注来源编号（与给定资料编号一致）
+4. 若资料中含「当前阅读」标记的文章，优先依据该篇作答，其它资料仅作补充
 不要编造检索结果中不存在的数据。"""
 
 CHITCHAT_SYSTEM_PROMPT = """你是 DrugIntel.ai 的医药情报助手。当前用户是闲聊或在询问你的能力，不需要检索新闻。
@@ -25,13 +26,23 @@ _EMPTY_RAG_REPLY = (
     "未检索到相关医药新闻，请换个关键词再试，或先运行采集与处理流水线入库。"
 )
 
+_PAGE_CTX_LIMIT = 2400
+_DEFAULT_CTX_LIMIT = 800
 
-def _format_contexts(hits: Sequence[Tuple[News, float]]) -> str:
+
+def _format_contexts(
+    hits: Sequence[Tuple[News, float]],
+    *,
+    page_news_id: Optional[int] = None,
+) -> str:
     blocks: List[str] = []
     for i, (news, score) in enumerate(hits, start=1):
-        abstract = (news.abstract or news.content or "")[:800]
+        is_page = page_news_id is not None and news.id == page_news_id
+        limit = _PAGE_CTX_LIMIT if is_page else _DEFAULT_CTX_LIMIT
+        abstract = (news.abstract or news.content or "")[:limit]
+        label = "当前阅读" if is_page else "检索"
         blocks.append(
-            f"[{i}] 标题: {news.title}\n"
+            f"[{i}] ({label}) 标题: {news.title}\n"
             f"来源: {news.source or news.crawler or '-'} | 相关度: {score:.3f}\n"
             f"摘要: {abstract}"
         )
@@ -62,6 +73,7 @@ def build_messages(
     *,
     history: Sequence[dict] | None = None,
     intent: Intent | IntentResult | None = None,
+    page_news_id: Optional[int] = None,
 ) -> List[dict]:
     hist_block = _history_block(history)
     if _is_chitchat(intent):
@@ -78,7 +90,8 @@ def build_messages(
     user = (
         f"对话历史：\n{hist_block}\n\n"
         f"用户问题：{query}\n\n"
-        f"检索资料：\n{_format_contexts(hits) if hits else '（无检索结果）'}\n\n"
+        f"检索资料：\n"
+        f"{_format_contexts(hits, page_news_id=page_news_id) if hits else '（无检索结果）'}\n\n"
         "请作答："
     )
     return [
@@ -94,12 +107,19 @@ async def generate_answer(
     client: SiliconFlowClient | None = None,
     history: Sequence[dict] | None = None,
     intent: Intent | IntentResult | None = None,
+    page_news_id: Optional[int] = None,
 ) -> str:
     if not hits and not _is_chitchat(intent):
         return _EMPTY_RAG_REPLY
     llm = client or SiliconFlowClient.from_env()
     return await llm.chat_completion(
-        build_messages(query, hits, history=history, intent=intent)
+        build_messages(
+            query,
+            hits,
+            history=history,
+            intent=intent,
+            page_news_id=page_news_id,
+        )
     )
 
 
@@ -110,12 +130,19 @@ async def generate_answer_stream(
     client: SiliconFlowClient | None = None,
     history: Sequence[dict] | None = None,
     intent: Intent | IntentResult | None = None,
+    page_news_id: Optional[int] = None,
 ) -> AsyncIterator[str]:
     if not hits and not _is_chitchat(intent):
         yield _EMPTY_RAG_REPLY
         return
     llm = client or SiliconFlowClient.from_env()
     async for piece in llm.chat_completion_stream(
-        build_messages(query, hits, history=history, intent=intent)
+        build_messages(
+            query,
+            hits,
+            history=history,
+            intent=intent,
+            page_news_id=page_news_id,
+        )
     ):
         yield piece

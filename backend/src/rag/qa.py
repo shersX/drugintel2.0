@@ -48,17 +48,57 @@ def _resolve_top_k(top_k: Optional[int] = None) -> int:
     return settings.top_k
 
 
-def _sources_from_hits(hits: Sequence[Hit]) -> List[Dict[str, Any]]:
-    return [
-        {
+def _load_page_pin(session, news_id: Optional[int]) -> Optional[Hit]:
+    if news_id is None:
+        return None
+    try:
+        nid = int(news_id)
+    except (TypeError, ValueError):
+        return None
+    news = session.get(News, nid)
+    if news is None or news.process_status != "ready":
+        return None
+    return (news, 1.0)
+
+
+def _merge_with_pin(
+    retrieved: Sequence[Hit],
+    pinned: Optional[Hit],
+    *,
+    top_k: int,
+) -> List[Hit]:
+    """Pinned 始终首位；去重后截断到 top_k。"""
+    if pinned is None:
+        return list(retrieved[:top_k])
+    pin_news, pin_score = pinned
+    rest: List[Hit] = []
+    for n, score in retrieved:
+        if n.id == pin_news.id:
+            continue
+        rest.append((n, score))
+        if len(rest) >= max(0, top_k - 1):
+            break
+    return [(pin_news, pin_score), *rest]
+
+
+def _sources_from_hits(
+    hits: Sequence[Hit],
+    *,
+    page_news_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for n, score in hits:
+        row: Dict[str, Any] = {
             "id": n.id,
             "title": n.title,
             "score": float(score),
             "detail_url": n.detail_url,
             "abstract": (n.abstract or "")[:200],
         }
-        for n, score in hits
-    ]
+        if page_news_id is not None and n.id == page_news_id:
+            row["page_context"] = True
+        out.append(row)
+    return out
 
 
 def _stage(
@@ -67,6 +107,7 @@ def _stage(
     detail: str = "",
     intent: Optional[str] = None,
     search_query: Optional[str] = None,
+    news_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"type": "stage", "stage": stage}
     if detail:
@@ -75,6 +116,8 @@ def _stage(
         payload["intent"] = intent
     if search_query:
         payload["search_query"] = search_query
+    if news_id is not None:
+        payload["news_id"] = news_id
     return payload
 
 
@@ -89,6 +132,7 @@ async def ask(
     top_k: Optional[int] = None,
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    news_id: Optional[int] = None,
 ) -> AskResult:
     """同步问答（聚合流式路径结果）。"""
     final: Dict[str, Any] = {
@@ -106,6 +150,7 @@ async def ask(
         top_k=top_k,
         conversation_id=conversation_id,
         session_id=session_id,
+        news_id=news_id,
     ):
         et = event.get("type")
         if et == "meta":
@@ -168,6 +213,7 @@ async def ask_stream(
     top_k: Optional[int] = None,
     conversation_id: Optional[str] = None,
     session_id: Optional[str] = None,
+    news_id: Optional[int] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
     """
     事件顺序：
@@ -183,16 +229,19 @@ async def ask_stream(
         )
         cid = conv.id
         history = get_history_messages(session, conversation_id=cid, limit=40)
+        pinned = _load_page_pin(session, news_id)
+        page_news_id = pinned[0].id if pinned else None
         intent = classify_intent(query)
         yield _stage(
             "intent",
             detail=intent.intent.value,
             intent=intent.intent.value,
+            news_id=page_news_id,
         )
 
-        # 闲聊：不检索
+        # 闲聊：不检索（页面上下文也不注入）
         if intent.intent == Intent.CHITCHAT:
-            yield _stage("generate", intent=intent.intent.value)
+            yield _stage("generate", intent=intent.intent.value, news_id=page_news_id)
             parts: List[str] = []
             async for piece in generate_answer_stream(
                 query, [], history=history, intent=intent
@@ -238,17 +287,26 @@ async def ask_stream(
                 "sources": [],
             }
 
-        # 1) 原句检索
+        # 1) 原句检索 + 页面 pin 合并
         search_query = query
         sources: List[Dict[str, Any]] = []
-        yield _stage("retrieve", intent=intent.intent.value)
+        yield _stage(
+            "retrieve",
+            intent=intent.intent.value,
+            news_id=page_news_id,
+        )
         raw_hits = await retrieve_hits(session, search_query, top_k=resolved_k * 2)
-        yield _stage("rerank", intent=intent.intent.value)
-        hits = await rerank(search_query, raw_hits, top_k=resolved_k)
-        hits = filter_by_relevance(hits)
+        yield _stage(
+            "rerank",
+            intent=intent.intent.value,
+            news_id=page_news_id,
+        )
+        retrieved = await rerank(search_query, raw_hits, top_k=resolved_k)
+        retrieved = filter_by_relevance(retrieved)
+        hits = _merge_with_pin(retrieved, pinned, top_k=resolved_k)
 
-        # 2) 不足 → 改写再检索（最多一轮）
-        if not _hits_ok(hits):
+        # 2) 库内不足且无 pin → 改写再检索；有 pin 则跳过 clarify
+        if not _hits_ok(retrieved) and pinned is None:
             yield _stage(
                 "retry",
                 detail="原句检索不足，正在优化问法",
@@ -278,8 +336,51 @@ async def ask_stream(
                 intent=intent.intent.value,
                 search_query=search_query,
             )
-            hits = await rerank(search_query, raw_hits, top_k=resolved_k)
-            hits = filter_by_relevance(hits)
+            retrieved = await rerank(search_query, raw_hits, top_k=resolved_k)
+            retrieved = filter_by_relevance(retrieved)
+            hits = _merge_with_pin(retrieved, pinned, top_k=resolved_k)
+
+        elif not _hits_ok(retrieved) and pinned is not None:
+            # 有页面上下文：仍可尝试一轮补充检索，但不澄清
+            yield _stage(
+                "retry",
+                detail="补充检索相关新闻",
+                intent=intent.intent.value,
+                news_id=page_news_id,
+            )
+            yield _stage(
+                "rewrite",
+                intent=intent.intent.value,
+                news_id=page_news_id,
+            )
+            rewritten = await rewrite_query(
+                query, history=history, intent=intent, empty_retry=True
+            )
+            search_query = rewritten.search_query or query
+            if not (rewritten.need_clarify and rewritten.clarify_question):
+                yield _stage(
+                    "retrieve",
+                    detail="使用优化问法补充检索",
+                    intent=intent.intent.value,
+                    search_query=search_query,
+                    news_id=page_news_id,
+                )
+                raw_hits = await retrieve_hits(
+                    session, search_query, top_k=resolved_k * 2
+                )
+                yield _stage(
+                    "rerank",
+                    intent=intent.intent.value,
+                    search_query=search_query,
+                    news_id=page_news_id,
+                )
+                retrieved = await rerank(search_query, raw_hits, top_k=resolved_k)
+                retrieved = filter_by_relevance(retrieved)
+                hits = _merge_with_pin(retrieved, pinned, top_k=resolved_k)
+            else:
+                # 改写认为需澄清，但有 pin：仅用当前页作答
+                search_query = query
+                hits = _merge_with_pin([], pinned, top_k=resolved_k)
 
         if not _hits_ok(hits):
             question = await clarify_after_empty(
@@ -289,7 +390,7 @@ async def ask_stream(
                 yield ev
             return
 
-        sources = _sources_from_hits(hits)
+        sources = _sources_from_hits(hits, page_news_id=page_news_id)
         yield {
             "type": "meta",
             "session_id": cid,
@@ -297,15 +398,21 @@ async def ask_stream(
             "intent": intent.intent.value,
             "sources": sources,
             "search_query": search_query if search_query != query else None,
+            "news_id": page_news_id,
         }
         yield _stage(
             "generate",
             intent=intent.intent.value,
             search_query=search_query if search_query != query else None,
+            news_id=page_news_id,
         )
         parts = []
         async for piece in generate_answer_stream(
-            query, hits, history=history, intent=intent
+            query,
+            hits,
+            history=history,
+            intent=intent,
+            page_news_id=page_news_id,
         ):
             parts.append(piece)
             yield {"type": "token", "content": piece}
@@ -327,4 +434,5 @@ async def ask_stream(
         "clarify": False,
         "search_query": search_query if search_query != query else None,
         "sources": sources,
+        "news_id": page_news_id,
     }

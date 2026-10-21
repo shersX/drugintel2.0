@@ -61,6 +61,8 @@
       </div>
     </div>
 
+    <PageChatFab v-if="showPageChat" />
+
     <footer v-if="!isLogin" class="colophon">
       <div class="colophon-inner">
         <span><b>DrugIntel.ai</b> — 医药情报 · 聚类 · RAG 问答</span>
@@ -75,6 +77,7 @@ import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from './api'
 import AuthGate from './components/AuthGate.vue'
+import PageChatFab from './components/chat/PageChatFab.vue'
 import { authPrompt, closeAuthPrompt, promptCopy } from './authPrompt'
 import { setCrawlerSources } from './format'
 import { clearUser, session } from './session'
@@ -96,6 +99,7 @@ const route = useRoute()
 const router = useRouter()
 const isLogin = computed(() => route.path === '/login')
 const isChat = computed(() => route.path === '/chat')
+const showPageChat = computed(() => !isLogin.value && !isChat.value)
 const showGate = computed(() => {
   if (route.meta.public) return false
   if (!session.user) return true

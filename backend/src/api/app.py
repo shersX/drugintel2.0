@@ -498,6 +498,7 @@ async def api_chat_ask(body: AskRequest, actor: Actor = Depends(current_actor)):
         top_k=body.top_k,
         conversation_id=body.conversation_id,
         session_id=body.session_id,
+        news_id=body.news_id,
     )
     return ok(
         {
@@ -536,11 +537,19 @@ async def ws_chat(websocket: WebSocket):
             except QuotaError as exc:
                 await websocket.send_json({"type": "error", "message": str(exc)})
                 continue
+            raw_news_id = payload.get("news_id")
+            news_id = None
+            if raw_news_id is not None and raw_news_id != "":
+                try:
+                    news_id = int(raw_news_id)
+                except (TypeError, ValueError):
+                    news_id = None
             async for event in ask_stream(
                 query,
                 user_id=actor.id,
                 conversation_id=payload.get("conversation_id"),
                 session_id=payload.get("session_id"),
+                news_id=news_id,
             ):
                 await websocket.send_json(event)
     except WebSocketDisconnect:

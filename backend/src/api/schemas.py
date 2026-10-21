@@ -12,6 +12,7 @@ class AskRequest(BaseModel):
     session_id: Optional[str] = None
     conversation_id: Optional[str] = None
     top_k: Optional[int] = None  # 已废弃：服务端以管理员 rag_config 为准
+    news_id: Optional[int] = None  # 页面上下文：强制注入该新闻为资料首位
 
 
 class RagConfigUpdate(BaseModel):
