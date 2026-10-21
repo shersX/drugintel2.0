@@ -44,6 +44,7 @@ def ensure_schema() -> None:
         )
     _backfill_news_process_status(engine)
     _ensure_llm_profile_columns(engine)
+    _ensure_crawl_config_columns(engine)
     _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
     _fix_naive_publish_time_as_shanghai(engine)
@@ -54,6 +55,8 @@ def ensure_schema() -> None:
     except RuntimeError as exc:
         logger.warning("%s（表为空时部分环境可稍后重试）", exc)
     _seed_crawl_config()
+    _seed_pipeline_crawl_config()
+    _seed_simcere_company()
     _seed_rag_and_crawler_settings()
     _seed_smtp_config()
     _seed_filter_keywords()
@@ -65,7 +68,7 @@ def ensure_schema() -> None:
 
 
 def _ensure_llm_profile_columns(engine) -> None:
-    """已有库补上嵌入、重排各自的地址和密钥，并从原来的共用字段回填。"""
+    """已有库补上嵌入、重排、视觉各自的地址和密钥，并从原来的共用字段回填。"""
     with engine.begin() as conn:
         if conn.execute(text("SELECT to_regclass('public.llm_profile')")).scalar() is None:
             return
@@ -75,6 +78,9 @@ def _ensure_llm_profile_columns(engine) -> None:
             ("embedding_dim", "INTEGER"),
             ("reranker_base_url", "VARCHAR(300)"),
             ("reranker_api_key", "TEXT"),
+            ("vision_base_url", "VARCHAR(300)"),
+            ("vision_api_key", "TEXT"),
+            ("vision_model", "VARCHAR(200)"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ADD COLUMN IF NOT EXISTS {name} {ddl}"))
         conn.execute(
@@ -114,16 +120,55 @@ def _ensure_llm_profile_columns(engine) -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET vision_base_url = base_url
+                WHERE vision_base_url IS NULL OR btrim(vision_base_url) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET vision_api_key = api_key
+                WHERE vision_api_key IS NULL OR btrim(vision_api_key) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET vision_model = ''
+                WHERE vision_model IS NULL
+                """
+            )
+        )
         for name, default in (
             ("embedding_base_url", "''"),
             ("embedding_api_key", "''"),
             ("reranker_base_url", "''"),
             ("reranker_api_key", "''"),
+            ("vision_base_url", "''"),
+            ("vision_api_key", "''"),
+            ("vision_model", "''"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET DEFAULT {default}"))
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET NOT NULL"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET DEFAULT 1024"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET NOT NULL"))
+
+
+def _ensure_crawl_config_columns(engine) -> None:
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.crawl_config')")).scalar() is None:
+            return
+        conn.execute(
+            text("ALTER TABLE crawl_config ADD COLUMN IF NOT EXISTS interval_minutes INTEGER")
+        )
 
 
 def _encrypt_llm_profile_keys() -> None:
@@ -137,7 +182,12 @@ def _encrypt_llm_profile_keys() -> None:
         rows = list(session.scalars(select(LlmProfile)).all())
         changed = 0
         for row in rows:
-            for attr in ("api_key", "embedding_api_key", "reranker_api_key"):
+            for attr in (
+                "api_key",
+                "embedding_api_key",
+                "reranker_api_key",
+                "vision_api_key",
+            ):
                 value = getattr(row, attr) or ""
                 if value and not is_sealed(value):
                     setattr(row, attr, seal(value))
@@ -338,6 +388,36 @@ def _seed_crawl_config() -> None:
                 )
             )
             logger.info("已写入默认采集配置（未启动）")
+
+
+def _seed_pipeline_crawl_config() -> None:
+    from backend.src.models.pipeline import PipelineCrawlConfig
+
+    with session_scope() as session:
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SEED_LOCK + 1})
+        existing = session.scalar(select(PipelineCrawlConfig).limit(1))
+        if existing is None:
+            session.add(
+                PipelineCrawlConfig(
+                    running=False,
+                    schedule_mode="manual",
+                    crawler_keys=["simcere_pipeline"],
+                    source_url="https://www.simcere.com/kxcx/yggx.aspx",
+                )
+            )
+            logger.info("已写入默认管线采集配置（未启动）")
+
+
+def _seed_simcere_company() -> None:
+    from backend.src.models.entities import Company
+
+    with session_scope() as session:
+        row = session.scalar(select(Company).where(Company.name == "先声药业"))
+        if row is None:
+            session.add(Company(name="先声药业", name_en="Simcere"))
+            logger.info("已写入先声药业公司种子")
+        elif not (row.name_en or "").strip():
+            row.name_en = "Simcere"
 
 
 def _seed_rag_and_crawler_settings() -> None:

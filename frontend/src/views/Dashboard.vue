@@ -63,6 +63,30 @@
           <div v-else class="empty"><div class="empty-title">暂无关键词命中</div></div>
         </section>
       </div>
+
+      <div class="bento" style="margin-top:16px">
+        <section class="card reveal">
+          <div class="sec-mark"><span class="no">04</span><h3>研发阶段分布</h3><span class="rule"></span></div>
+          <div v-if="stages.length" class="stage-bars">
+            <div v-for="s in stages" :key="s.stage" class="stage-row">
+              <span class="stage-name">{{ stageLabel(s.stage) }}</span>
+              <div class="bar-track"><div class="bar-fill" :style="{ width: stageWidth(s) }"></div></div>
+              <span class="mono">{{ s.count }}</span>
+            </div>
+          </div>
+          <div v-else class="empty"><div class="empty-title">暂无管线阶段数据</div><p><router-link to="/pipeline">查看研发管线</router-link></p></div>
+        </section>
+        <section class="card reveal">
+          <div class="sec-mark"><span class="no">05</span><h3>最近管线变更</h3><span class="rule"></span></div>
+          <ul v-if="pipelineChanges.length" class="pipe-changes">
+            <li v-for="c in pipelineChanges" :key="c.id">
+              <strong>{{ c.drug_name }}</strong>
+              <span class="meta">{{ c.field }} {{ c.old_label || c.old_value || '—' }} → {{ c.new_label || c.new_value || '—' }}</span>
+            </li>
+          </ul>
+          <div v-else class="empty"><div class="empty-title">暂无变更</div></div>
+        </section>
+      </div>
     </template>
   </div>
 </template>
@@ -78,6 +102,8 @@ import TrendChart from '../components/TrendChart.vue'
 const overview = ref({})
 const trend = ref([])
 const keywords = ref([])
+const stages = ref([])
+const pipelineChanges = ref([])
 const { loading, error, run } = useAsync()
 
 const stats = computed(() => {
@@ -85,10 +111,28 @@ const stats = computed(() => {
   return [
     { label: '在库新闻', value: o.news_count ?? 0 },
     { label: '聚合事件', value: o.event_count ?? 0 },
-    { label: '已向量化', value: o.news_with_embedding ?? 0 },
+    { label: '管线资产', value: o.pipeline_asset_count ?? 0 },
     { label: '待聚类', value: o.unassigned_news ?? 0 },
   ]
 })
+
+const stageMap = {
+  preclinical: '临床前',
+  phase1: 'I 期',
+  phase2: 'II 期',
+  phase3: 'III 期',
+  nda: '申报上市',
+  approved: '已获批',
+  partner: '合作方推进',
+  unknown: '未知',
+}
+function stageLabel(s) {
+  return stageMap[s] || s
+}
+function stageWidth(s) {
+  const max = Math.max(...stages.value.map((x) => x.count || 0), 1)
+  return `${Math.round(((s.count || 0) / max) * 100)}%`
+}
 
 /** 词频映射到 12–18px 字号，形成视觉权重 */
 function keywordSize(k) {
@@ -99,13 +143,21 @@ function keywordSize(k) {
 
 async function load() {
   const data = await run(() =>
-    Promise.all([api.overview(), api.trend(), api.keywords()])
+    Promise.all([
+      api.overview(),
+      api.trend(),
+      api.keywords(),
+      api.stages().catch(() => []),
+      api.pipelineChanges({ limit: 8 }).catch(() => ({ items: [] })),
+    ]),
   )
   if (!data) return
-  const [o, t, k] = data
+  const [o, t, k, st, ch] = data
   overview.value = o || {}
   trend.value = t || []
   keywords.value = (k || []).slice(0, 18)
+  stages.value = Array.isArray(st) ? st : (st?.items || [])
+  pipelineChanges.value = ch?.items || []
 }
 
 onMounted(load)
@@ -131,4 +183,10 @@ onMounted(load)
 @media (max-width: 900px) {
   .bento { grid-template-columns: 1fr; }
 }
+.stage-bars { display: grid; gap: 10px; }
+.stage-row { display: grid; grid-template-columns: 88px 1fr 40px; gap: 8px; align-items: center; }
+.bar-track { height: 8px; background: var(--paper-2, #eee); border-radius: 99px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--moss); border-radius: 99px; }
+.pipe-changes { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.pipe-changes li { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 </style>

@@ -8,9 +8,9 @@ from typing import Any, Dict, List
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.orm import Session
 
-from backend.src.models.entities import DrugDevelopmentEvent
 from backend.src.models.event import Event
 from backend.src.models.news import News
+from backend.src.models.pipeline import PipelineAsset
 
 
 def overview_stats(session: Session) -> Dict[str, Any]:
@@ -34,18 +34,28 @@ def overview_stats(session: Session) -> Dict[str, Any]:
         )
         or 0
     )
+    asset_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(PipelineAsset)
+            .where(PipelineAsset.status == "active")
+        )
+        or 0
+    )
     return {
         "news_count": int(news_count),
         "event_count": int(event_count),
         "news_with_embedding": int(with_emb),
         "unassigned_news": int(unassigned),
+        "pipeline_asset_count": int(asset_count),
     }
 
 
 def development_stage_stats(session: Session) -> List[Dict[str, Any]]:
     rows = session.execute(
-        select(DrugDevelopmentEvent.development_stage, func.count())
-        .group_by(DrugDevelopmentEvent.development_stage)
+        select(PipelineAsset.current_stage, func.count())
+        .where(PipelineAsset.status == "active")
+        .group_by(PipelineAsset.current_stage)
         .order_by(func.count().desc())
     ).all()
     return [{"stage": r[0] or "unknown", "count": int(r[1])} for r in rows]

@@ -29,6 +29,10 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.crawl_tasks.crawl_tick",
         "schedule": crontab(),
     },
+    "pipeline-tick-every-minute": {
+        "task": "tasks.pipeline_tasks.pipeline_tick",
+        "schedule": crontab(),
+    },
 }
 
 
@@ -59,3 +63,26 @@ def run_crawl_pipeline(trigger: str = "manual") -> dict:
     from backend.src.crawl.schedule import run_pipeline
 
     return run_pipeline(trigger)
+
+
+@celery_app.task(name="tasks.pipeline_tasks.pipeline_tick")
+def pipeline_tick() -> dict:
+    from backend.src.pipeline_intel.schedule import mark_pipeline_tick_fired, should_run_pipeline_tick
+
+    if not should_run_pipeline_tick():
+        return {"status": "idle"}
+    mark_pipeline_tick_fired()
+    celery_app.send_task(
+        "tasks.pipeline_tasks.run_pipeline_intel",
+        kwargs={"force": False},
+    )
+    return {"status": "enqueued"}
+
+
+@celery_app.task(name="tasks.pipeline_tasks.run_pipeline_intel")
+def run_pipeline_intel(force: bool = False) -> dict:
+    import asyncio
+
+    from backend.src.pipeline_intel.service import run_pipeline_sync
+
+    return asyncio.run(run_pipeline_sync(force=force))

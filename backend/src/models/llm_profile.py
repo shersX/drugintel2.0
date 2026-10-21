@@ -23,4 +23,7 @@ class LlmProfile(Base):
     reranker_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     reranker_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     reranker_model: Mapped[str] = mapped_column(String(200), nullable=False)
+    vision_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    vision_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    vision_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

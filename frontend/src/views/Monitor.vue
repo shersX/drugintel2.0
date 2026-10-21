@@ -5,7 +5,7 @@
         <div>
           <div class="ed-kicker">Crawl · 采集监控</div>
           <h1 class="ed-title">爬虫监控</h1>
-          <p class="ed-lede">基础设施健康、流水线状态。采集在此选择爬虫与节奏后启动，并查看每个爬虫的日志。</p>
+          <p class="ed-lede">新闻采集与管线同步分区管理；可分别设置节奏并查看任务日志。</p>
         </div>
         <button class="secondary" :disabled="loading" @click="load">刷新</button>
       </div>
@@ -118,9 +118,16 @@
         <div class="field">
           <label>节奏</label>
           <div class="seg">
+            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'manual' }" :disabled="locked" @click="scheduleMode = 'manual'">手动</button>
+            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'interval' }" :disabled="locked" @click="scheduleMode = 'interval'">间隔</button>
             <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'hourly' }" :disabled="locked" @click="scheduleMode = 'hourly'">每小时</button>
             <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'daily' }" :disabled="locked" @click="scheduleMode = 'daily'">每天</button>
           </div>
+        </div>
+
+        <div class="field" v-if="scheduleMode === 'interval'">
+          <label for="news-interval">间隔分钟（≥15）</label>
+          <input id="news-interval" type="number" min="15" max="1440" v-model.number="intervalMinutes" :disabled="locked" />
         </div>
 
         <div class="field" v-if="scheduleMode === 'daily'">
@@ -128,11 +135,7 @@
           <input id="daily-time" type="time" v-model="dailyTime" :disabled="locked" />
         </div>
 
-        <p class="meta hint">
-          {{ scheduleMode === 'hourly'
-            ? '点启动后立刻采集一次，之后每小时持续执行。'
-            : '点启动后立刻采集一次；当天到达所选时刻还会再采集，之后每天该时刻执行。' }}
-        </p>
+        <p class="meta hint">新闻爬虫专用；管线同步请用下方「管线同步」分区。</p>
 
         <div class="row">
           <button type="button" :disabled="!canStart" @click="startCrawl">{{ actionLoading && !locked ? '启动中…' : '启动' }}</button>
@@ -155,9 +158,55 @@
         </div>
       </section>
 
+      <!-- 管线同步 -->
+      <section class="card reveal" style="margin-top:32px;--reveal-delay:140ms">
+        <div class="sec-mark"><span class="no">03</span><h3>管线同步 · 视觉抽取</h3><span class="rule"></span></div>
+        <p v-if="!visionReady" class="form-error">
+          请先在
+          <router-link to="/settings?tab=models">设置 → 大模型</router-link>
+          中配置并启用<strong>视觉模型</strong>后再同步管线。
+        </p>
+        <p v-else class="meta">视觉模型：{{ visionModel || '已就绪' }}</p>
+        <div class="field">
+          <label>来源 URL</label>
+          <input v-model="pipeSourceUrl" type="url" placeholder="https://www.simcere.com/kxcx/yggx.aspx" />
+        </div>
+        <div class="field">
+          <label>节奏</label>
+          <div class="seg">
+            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'manual' }" @click="pipeMode = 'manual'">手动</button>
+            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'interval' }" @click="pipeMode = 'interval'">间隔</button>
+            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'daily' }" @click="pipeMode = 'daily'">每天</button>
+            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'weekly' }" @click="pipeMode = 'weekly'">每周</button>
+          </div>
+        </div>
+        <div class="field" v-if="pipeMode === 'interval'">
+          <label>间隔分钟（≥15）</label>
+          <input type="number" min="15" v-model.number="pipeInterval" />
+        </div>
+        <div class="field" v-if="pipeMode === 'daily' || pipeMode === 'weekly'">
+          <label>时刻</label>
+          <input type="time" v-model="pipeDailyTime" />
+        </div>
+        <div class="field" v-if="pipeMode === 'weekly'">
+          <label>星期（0=周一 … 6=周日）</label>
+          <input type="number" min="0" max="6" v-model.number="pipeWeeklyDay" />
+        </div>
+        <div class="row">
+          <button type="button" :disabled="!visionReady || pipeBusy" @click="syncPipeline(false)">
+            {{ pipeBusy ? '同步中…' : '立即同步管线' }}
+          </button>
+          <button type="button" class="secondary" :disabled="!visionReady || pipeBusy" @click="syncPipeline(true)">强制重跑视觉</button>
+          <button type="button" class="secondary" :disabled="pipeBusy" @click="savePipeSchedule">保存调度</button>
+          <button type="button" class="ghost" :disabled="pipeBusy || !pipeRunning" @click="stopPipeSchedule">停止定时</button>
+        </div>
+        <p v-if="pipeMsg" class="meta" :class="{ 'form-error': pipeErr }">{{ pipeMsg }}</p>
+        <p class="meta">定时状态：{{ pipeRunning ? `运行中（${pipeMode}）` : '未启动' }}</p>
+      </section>
+
       <!-- 流水线状态 -->
       <section class="card reveal" style="margin-top:32px;--reveal-delay:160ms">
-        <div class="sec-mark"><span class="no">03</span><h3>处理流水线</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">04</span><h3>处理流水线</h3><span class="rule"></span></div>
         <div class="pipe-grid" v-if="processing">
           <div class="pipe-item">
             <span class="meta">最近处理</span>
@@ -179,8 +228,12 @@
 
       <!-- 爬虫任务 -->
       <section class="card reveal" style="margin-top:16px;--reveal-delay:220ms">
-        <div class="sec-mark"><span class="no">04</span><h3>爬虫任务</h3><span class="rule"></span></div>
-        <div class="table-wrap" v-if="tasks.length">
+        <div class="sec-mark"><span class="no">05</span><h3>爬虫任务</h3><span class="rule"></span></div>
+        <div class="seg" style="margin-bottom:12px">
+          <button type="button" class="seg-btn" :class="{ on: taskTab === 'news' }" @click="taskTab = 'news'">新闻任务</button>
+          <button type="button" class="seg-btn" :class="{ on: taskTab === 'pipeline' }" @click="taskTab = 'pipeline'">管线任务</button>
+        </div>
+        <div class="table-wrap" v-if="filteredTasks.length">
           <table class="task-table">
             <thead>
               <tr>
@@ -188,7 +241,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in tasks" :key="t.id">
+              <tr v-for="t in filteredTasks" :key="t.id">
                 <td class="mono">{{ t.crawler_name }}</td>
                 <td>
                   <span class="pill" :class="statusClass(t.status)">{{ statusLabel(t.status) }}</span>
@@ -222,11 +275,24 @@ const { loading, error, run } = useAsync()
 const crawl = ref(null)
 const scheduleMode = ref('hourly')
 const dailyTime = ref('08:00')
+const intervalMinutes = ref(60)
 const selected = ref(['bioon', 'globenewswire', 'prnewswire', 'pharmcube'])
 const formSynced = ref(false)
 const actionError = ref('')
 const actionLoading = ref(false)
 const reprocessMsg = ref('')
+const taskTab = ref('news')
+const visionReady = ref(false)
+const visionModel = ref('')
+const pipeSourceUrl = ref('https://www.simcere.com/kxcx/yggx.aspx')
+const pipeMode = ref('manual')
+const pipeInterval = ref(60)
+const pipeDailyTime = ref('08:00')
+const pipeWeeklyDay = ref(0)
+const pipeRunning = ref(false)
+const pipeBusy = ref(false)
+const pipeMsg = ref('')
+const pipeErr = ref(false)
 let pollTimer = 0
 
 const STAGE_ORDER = [
@@ -249,7 +315,16 @@ const canStart = computed(() => {
   if (!llmReady.value) return false
   if (!selected.value.length) return false
   if (scheduleMode.value === 'daily' && !dailyTime.value) return false
+  if (scheduleMode.value === 'interval' && Number(intervalMinutes.value) < 15) return false
   return true
+})
+
+const filteredTasks = computed(() => {
+  const rows = tasks.value || []
+  if (taskTab.value === 'pipeline') {
+    return rows.filter((t) => String(t.crawler_name || '').includes('pipeline') || t.crawler_name === 'simcere_pipeline')
+  }
+  return rows.filter((t) => !String(t.crawler_name || '').includes('pipeline'))
 })
 const phaseLabel = computed(() => {
   if (crawl.value?.active) return '本轮进行中'
@@ -367,12 +442,110 @@ function applyConfig(cfg) {
   if (!cfg) return
   scheduleMode.value = cfg.schedule_mode || 'hourly'
   dailyTime.value = cfg.daily_time || '08:00'
+  intervalMinutes.value = cfg.interval_minutes || 60
   const availableKeys = new Set(sources.value.map((item) => item.key))
   if (cfg.crawler_keys?.length) {
     // 只保留当前可选（已启用）源，避免进度分母含已禁用但仍写在配置里的 key
     selected.value = cfg.crawler_keys.filter((key) => availableKeys.has(key))
   } else if (!cfg.running) {
     selected.value = sources.value.map((item) => item.key)
+  }
+}
+
+function applyPipeConfig(cfg) {
+  if (!cfg) return
+  pipeRunning.value = Boolean(cfg.running)
+  pipeMode.value = cfg.schedule_mode || 'manual'
+  pipeInterval.value = cfg.interval_minutes || 60
+  pipeDailyTime.value = cfg.daily_time || '08:00'
+  pipeWeeklyDay.value = cfg.weekly_day ?? 0
+  if (cfg.source_url) pipeSourceUrl.value = cfg.source_url
+}
+
+async function loadVisionAndPipe() {
+  try {
+    const [vs, cfg] = await Promise.all([
+      api.pipelineVisionStatus(),
+      api.pipelineCrawlConfig().catch(() => null),
+    ])
+    visionReady.value = Boolean(vs?.ready)
+    visionModel.value = vs?.model || ''
+    if (!vs?.ready && vs?.message) {
+      pipeMsg.value = vs.message
+      pipeErr.value = true
+    }
+    applyPipeConfig(cfg)
+  } catch (e) {
+    visionReady.value = false
+    pipeMsg.value = e.message || '无法读取管线配置'
+    pipeErr.value = true
+  }
+}
+
+async function syncPipeline(force) {
+  pipeBusy.value = true
+  pipeMsg.value = ''
+  pipeErr.value = false
+  try {
+    if (!visionReady.value) {
+      throw new Error('请先在设置 → 大模型中配置并启用视觉模型')
+    }
+    const data = await api.pipelineSync({
+      force: Boolean(force),
+      source_url: pipeSourceUrl.value || undefined,
+    })
+    pipeMsg.value = data?.skipped
+      ? '图片未变化，已跳过视觉抽取'
+      : `同步完成：新建 ${data?.stats?.created ?? 0} · 更新 ${data?.stats?.updated ?? 0} · 消失 ${data?.stats?.removed ?? 0}`
+    await load()
+  } catch (e) {
+    pipeErr.value = true
+    const detail = e.detail
+    pipeMsg.value = (typeof detail === 'object' && detail?.message) || e.message || '同步失败'
+  } finally {
+    pipeBusy.value = false
+  }
+}
+
+async function savePipeSchedule() {
+  pipeBusy.value = true
+  pipeMsg.value = ''
+  pipeErr.value = false
+  try {
+    if (!visionReady.value && pipeMode.value !== 'manual') {
+      throw new Error('启用定时前请先配置视觉模型')
+    }
+    const data = await api.updatePipelineCrawlConfig({
+      running: pipeMode.value !== 'manual',
+      schedule_mode: pipeMode.value,
+      interval_minutes: pipeInterval.value,
+      daily_time: pipeDailyTime.value,
+      weekly_day: pipeWeeklyDay.value,
+      source_url: pipeSourceUrl.value,
+      crawler_keys: ['simcere_pipeline'],
+    })
+    applyPipeConfig(data)
+    pipeMsg.value = '管线调度已保存'
+  } catch (e) {
+    pipeErr.value = true
+    pipeMsg.value = e.message || '保存失败'
+  } finally {
+    pipeBusy.value = false
+  }
+}
+
+async function stopPipeSchedule() {
+  pipeBusy.value = true
+  try {
+    const data = await api.updatePipelineCrawlConfig({ running: false, schedule_mode: 'manual' })
+    applyPipeConfig(data)
+    pipeMsg.value = '已停止管线定时'
+    pipeErr.value = false
+  } catch (e) {
+    pipeErr.value = true
+    pipeMsg.value = e.message || '停止失败'
+  } finally {
+    pipeBusy.value = false
   }
 }
 
@@ -427,6 +600,7 @@ async function load() {
   } catch (e) {
     actionError.value = e.message || '采集状态不可用'
   }
+  await loadVisionAndPipe()
 }
 
 async function startCrawl() {
@@ -441,6 +615,7 @@ async function startCrawl() {
     const status = await api.crawlStart({
       schedule_mode: scheduleMode.value,
       daily_time: scheduleMode.value === 'daily' ? dailyTime.value : null,
+      interval_minutes: scheduleMode.value === 'interval' ? intervalMinutes.value : null,
       crawler_keys: selected.value.filter((key) => availableKeys.has(key)),
     })
     crawl.value = status

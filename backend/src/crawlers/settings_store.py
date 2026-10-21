@@ -21,6 +21,7 @@ def _code_defaults() -> Dict[str, Dict[str, Any]]:
     for key, cfg in CRAWLER_REGISTRY.items():
         out[key] = {
             "name": cfg.get("name", key),
+            "kind": cfg.get("kind", "news"),
             "enabled": bool(cfg.get("enabled", True)),
             "page_count": int(cfg.get("page_count", 1)),
             "concurrency": int(cfg.get("concurrency", 2)),
@@ -65,6 +66,7 @@ def list_crawler_settings(session: Session) -> List[Dict[str, Any]]:
             {
                 "crawler_key": key,
                 "name": base["name"],
+                "kind": base.get("kind", "news"),
                 "enabled": bool(row.enabled) if row else base["enabled"],
                 "page_count": int(row.page_count) if row else base["page_count"],
                 "concurrency": int(row.concurrency) if row else base["concurrency"],
@@ -99,6 +101,7 @@ def update_crawler_setting(
     return {
         "crawler_key": crawler_key,
         "name": base["name"],
+        "kind": base.get("kind", "news"),
         "enabled": row.enabled,
         "page_count": row.page_count,
         "concurrency": row.concurrency,
@@ -126,7 +129,8 @@ def merged_crawler_registry(
             row = rows.get(key)
             out[key] = {
                 "name": cfg.get("name", key),
-                "function": cfg["function"],
+                "kind": cfg.get("kind", "news"),
+                "function": cfg.get("function"),
                 "enabled": bool(row.enabled) if row else bool(cfg.get("enabled", True)),
                 "page_count": int(row.page_count) if row else int(cfg.get("page_count", 1)),
                 "concurrency": int(row.concurrency)
@@ -148,7 +152,8 @@ def merged_crawler_registry(
         return {
             key: {
                 "name": cfg.get("name", key),
-                "function": cfg["function"],
+                "kind": cfg.get("kind", "news"),
+                "function": cfg.get("function"),
                 "enabled": bool(cfg.get("enabled", True)),
                 "page_count": int(cfg.get("page_count", 1)),
                 "concurrency": int(cfg.get("concurrency", 2)),

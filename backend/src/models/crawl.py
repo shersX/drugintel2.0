@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,7 @@ class CrawlConfig(Base):
     running: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     schedule_mode: Mapped[str] = mapped_column(String(20), default="hourly", nullable=False)
     daily_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    interval_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     crawler_keys: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     armed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

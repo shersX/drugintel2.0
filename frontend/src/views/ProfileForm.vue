@@ -7,7 +7,7 @@
 
     <label v-if="allowSync" class="wide sync">
       <input type="checkbox" v-model="syncFromChat" />
-      <span>嵌入 / 重排沿用对话的 Key 与地址</span>
+      <span>嵌入 / 重排 / 视觉沿用对话的 Key 与地址</span>
     </label>
 
     <fieldset class="block">
@@ -27,10 +27,30 @@
         <input v-model="local.base_url" required placeholder="https://api.siliconflow.cn/v1" />
       </label>
       <label class="wide">
-        模型
-        <input v-model="local.chat_model" required />
+        对话模型
+        <select
+          v-if="modelLists.chat.length"
+          v-model="local.chat_model"
+          required
+        >
+          <option disabled value="">请选择模型</option>
+          <option v-for="id in modelLists.chat" :key="id" :value="id">{{ id }}</option>
+          <option v-if="local.chat_model && !modelLists.chat.includes(local.chat_model)" :value="local.chat_model">
+            {{ local.chat_model }}（当前）
+          </option>
+        </select>
+        <input
+          v-else
+          v-model="local.chat_model"
+          required
+          placeholder="先点下方「拉取模型」，或直接手填模型 ID"
+        />
+        <span class="field-hint">
+          {{ modelLists.chat.length ? `已载入 ${modelLists.chat.length} 个，可下拉选择` : '请先拉取模型列表' }}
+        </span>
       </label>
       <div class="row wide">
+        <button type="button" class="secondary" :disabled="busy" @click="fetchModels('chat')">拉取模型</button>
         <button type="button" class="secondary" :disabled="busy" @click="testSlot('chat')">测试连接</button>
       </div>
       <p v-if="notices.chat" class="wide result" :class="noticeClass(notices.chat)">{{ notices.chat.text }}</p>
@@ -64,10 +84,30 @@
         />
       </label>
       <label class="wide">
-        模型
-        <input v-model="local.embedding_model" required />
+        嵌入模型
+        <select
+          v-if="modelLists.embedding.length"
+          v-model="local.embedding_model"
+          required
+        >
+          <option disabled value="">请选择模型</option>
+          <option v-for="id in modelLists.embedding" :key="id" :value="id">{{ id }}</option>
+          <option v-if="local.embedding_model && !modelLists.embedding.includes(local.embedding_model)" :value="local.embedding_model">
+            {{ local.embedding_model }}（当前）
+          </option>
+        </select>
+        <input
+          v-else
+          v-model="local.embedding_model"
+          required
+          placeholder="先点下方「拉取模型」，或直接手填模型 ID"
+        />
+        <span class="field-hint">
+          {{ modelLists.embedding.length ? `已载入 ${modelLists.embedding.length} 个，可下拉选择` : '请先拉取模型列表' }}
+        </span>
       </label>
       <div class="row wide">
+        <button type="button" class="secondary" :disabled="busy || syncFromChat" @click="fetchModels('embedding')">拉取模型</button>
         <button type="button" class="secondary" :disabled="busy" @click="testSlot('embedding')">测试连接</button>
       </div>
       <p v-if="notices.embedding" class="wide result" :class="noticeClass(notices.embedding)">{{ notices.embedding.text }}</p>
@@ -96,13 +136,82 @@
         />
       </label>
       <label class="wide">
-        模型
-        <input v-model="local.reranker_model" required />
+        重排模型
+        <select
+          v-if="modelLists.rerank.length"
+          v-model="local.reranker_model"
+          required
+        >
+          <option disabled value="">请选择模型</option>
+          <option v-for="id in modelLists.rerank" :key="id" :value="id">{{ id }}</option>
+          <option v-if="local.reranker_model && !modelLists.rerank.includes(local.reranker_model)" :value="local.reranker_model">
+            {{ local.reranker_model }}（当前）
+          </option>
+        </select>
+        <input
+          v-else
+          v-model="local.reranker_model"
+          required
+          placeholder="先点下方「拉取模型」，或直接手填模型 ID"
+        />
+        <span class="field-hint">
+          {{ modelLists.rerank.length ? `已载入 ${modelLists.rerank.length} 个，可下拉选择` : '请先拉取模型列表' }}
+        </span>
       </label>
       <div class="row wide">
+        <button type="button" class="secondary" :disabled="busy || syncFromChat" @click="fetchModels('rerank')">拉取模型</button>
         <button type="button" class="secondary" :disabled="busy" @click="testSlot('rerank')">测试连接</button>
       </div>
       <p v-if="notices.rerank" class="wide result" :class="noticeClass(notices.rerank)">{{ notices.rerank.text }}</p>
+    </fieldset>
+
+    <fieldset class="block">
+      <legend>视觉 · 管线图片抽取</legend>
+      <label>
+        API Key
+        <input
+          v-model="local.vision_api_key"
+          type="password"
+          autocomplete="off"
+          :placeholder="visionKeyPlaceholder"
+          :disabled="syncFromChat"
+        />
+      </label>
+      <label class="wide">
+        Base URL
+        <input
+          v-model="local.vision_base_url"
+          placeholder="可与对话相同；管线同步前必须配置"
+          :disabled="syncFromChat"
+        />
+      </label>
+      <label class="wide">
+        视觉模型
+        <select
+          v-if="modelLists.vision.length"
+          v-model="local.vision_model"
+        >
+          <option value="">未选择</option>
+          <option v-for="id in modelLists.vision" :key="id" :value="id">{{ id }}</option>
+          <option v-if="local.vision_model && !modelLists.vision.includes(local.vision_model)" :value="local.vision_model">
+            {{ local.vision_model }}（当前）
+          </option>
+        </select>
+        <input
+          v-else
+          v-model="local.vision_model"
+          placeholder="先点下方「拉取模型」，或直接手填视觉模型 ID"
+        />
+        <span class="field-hint">
+          {{ modelLists.vision.length ? `已载入 ${modelLists.vision.length} 个，可下拉选择` : '请先拉取模型列表（优先展示视觉类）' }}
+        </span>
+      </label>
+      <div class="row wide">
+        <button type="button" class="secondary" :disabled="busy || syncFromChat" @click="fetchModels('vision')">拉取模型</button>
+        <button type="button" class="secondary" :disabled="busy" @click="testSlot('vision')">测试连接</button>
+      </div>
+      <p class="wide field-hint">视觉模型可留空后仍启用配置（新闻不受影响）；同步管线前必须选好视觉模型。</p>
+      <p v-if="notices.vision" class="wide result" :class="noticeClass(notices.vision)">{{ notices.vision.text }}</p>
     </fieldset>
 
     <div class="row wide actions">
@@ -114,6 +223,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import { api } from '../api'
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -121,16 +231,19 @@ const props = defineProps({
   keepChat: { type: Boolean, default: false },
   keepEmbedding: { type: Boolean, default: false },
   keepRerank: { type: Boolean, default: false },
+  keepVision: { type: Boolean, default: false },
   submitLabel: { type: String, default: '保存' },
   stamp: { type: Number, default: 0 },
   notices: { type: Object, default: () => ({}) },
   allowSync: { type: Boolean, default: false },
   showCancel: { type: Boolean, default: false },
+  profileId: { type: [Number, String], default: null },
 })
 const emit = defineEmits(['submit', 'test', 'cancel'])
 
 const local = reactive(emptyLocal())
 const syncFromChat = ref(false)
+const modelLists = reactive({ chat: [], embedding: [], rerank: [], vision: [] })
 
 const embeddingKeyPlaceholder = computed(() => {
   if (syncFromChat.value) return '沿用对话 Key'
@@ -141,6 +254,11 @@ const rerankKeyPlaceholder = computed(() => {
   if (syncFromChat.value) return '沿用对话 Key'
   if (props.keepRerank) return '已保存，留空则不修改'
   return 'sk-...'
+})
+const visionKeyPlaceholder = computed(() => {
+  if (syncFromChat.value) return '沿用对话 Key'
+  if (props.keepVision) return '已保存，留空则不修改'
+  return '可选 sk-...'
 })
 
 function emptyLocal() {
@@ -156,6 +274,9 @@ function emptyLocal() {
     reranker_api_key: '',
     reranker_base_url: '',
     reranker_model: '',
+    vision_api_key: '',
+    vision_base_url: '',
+    vision_model: '',
   }
 }
 
@@ -171,6 +292,9 @@ function copyFrom(source) {
   local.reranker_api_key = ''
   local.reranker_base_url = source.reranker_base_url || ''
   local.reranker_model = source.reranker_model || ''
+  local.vision_api_key = ''
+  local.vision_base_url = source.vision_base_url || source.base_url || ''
+  local.vision_model = source.vision_model || ''
   syncFromChat.value = false
 }
 
@@ -186,6 +310,8 @@ watch(
     props.model?.embedding_dim,
     props.model?.reranker_base_url,
     props.model?.reranker_model,
+    props.model?.vision_base_url,
+    props.model?.vision_model,
   ],
   () => copyFrom(props.model || {}),
   { immediate: true },
@@ -195,9 +321,11 @@ watch(syncFromChat, (on) => {
   if (!on) return
   local.embedding_base_url = local.base_url
   local.reranker_base_url = local.base_url
+  local.vision_base_url = local.base_url
   if (local.api_key) {
     local.embedding_api_key = local.api_key
     local.reranker_api_key = local.api_key
+    local.vision_api_key = local.api_key
   }
 })
 
@@ -207,9 +335,11 @@ watch(
     if (!syncFromChat.value) return
     local.embedding_base_url = local.base_url
     local.reranker_base_url = local.base_url
+    local.vision_base_url = local.base_url
     if (local.api_key) {
       local.embedding_api_key = local.api_key
       local.reranker_api_key = local.api_key
+      local.vision_api_key = local.api_key
     }
   },
 )
@@ -225,6 +355,8 @@ function payload() {
     embedding_dim: Number(local.embedding_dim),
     reranker_base_url: local.reranker_base_url.trim(),
     reranker_model: local.reranker_model.trim(),
+    vision_base_url: (local.vision_base_url || local.base_url).trim(),
+    vision_model: local.vision_model.trim(),
   }
   if (syncFromChat.value) {
     return {
@@ -233,12 +365,15 @@ function payload() {
       embedding_base_url: local.base_url.trim(),
       reranker_api_key: local.api_key || local.reranker_api_key,
       reranker_base_url: local.base_url.trim(),
+      vision_api_key: local.api_key || local.vision_api_key,
+      vision_base_url: local.base_url.trim(),
     }
   }
   return {
     ...base,
     embedding_api_key: local.embedding_api_key,
     reranker_api_key: local.reranker_api_key,
+    vision_api_key: local.vision_api_key,
   }
 }
 
@@ -248,14 +383,62 @@ function noticeClass(notice) {
   return 'pending'
 }
 
-function testSlot(slot) {
+function slotCreds(slot) {
   const form = payload()
-  const picked = {
+  return {
     chat: { base_url: form.base_url, api_key: form.api_key },
     embedding: { base_url: form.embedding_base_url, api_key: form.embedding_api_key },
     rerank: { base_url: form.reranker_base_url, api_key: form.reranker_api_key },
+    vision: { base_url: form.vision_base_url || form.base_url, api_key: form.vision_api_key || form.api_key },
   }[slot]
-  emit('test', { slot, ...picked })
+}
+
+function testSlot(slot) {
+  emit('test', { slot, ...slotCreds(slot) })
+}
+
+function pickIds(models, slot) {
+  const all = models.map((m) => m.id).filter(Boolean)
+  const preferred = models
+    .filter((m) => m.kind === slot || (slot === 'chat' && (m.kind === 'chat' || m.kind === 'vision')))
+    .map((m) => m.id)
+  // 有分类命中时：命中项置顶，其余仍保留，方便手选
+  if (!preferred.length) return all
+  const rest = all.filter((id) => !preferred.includes(id))
+  return [...preferred, ...rest]
+}
+
+async function fetchModels(slot) {
+  const creds = slotCreds(slot)
+  try {
+    const data = await api.listLlmModels({
+      ...creds,
+      slot,
+      profile_id: props.profileId || undefined,
+    })
+    const models = data?.models || []
+    modelLists[slot] = pickIds(models, slot)
+    const current = {
+      chat: local.chat_model,
+      embedding: local.embedding_model,
+      rerank: local.reranker_model,
+      vision: local.vision_model,
+    }[slot]
+    // 若当前为空且列表有值，自动选第一项（视觉槽位不强制）
+    if (!current && modelLists[slot].length && slot !== 'vision') {
+      if (slot === 'chat') local.chat_model = modelLists[slot][0]
+      if (slot === 'embedding') local.embedding_model = modelLists[slot][0]
+      if (slot === 'rerank') local.reranker_model = modelLists[slot][0]
+    }
+    emit('test', {
+      slot,
+      ...creds,
+      ok: true,
+      text: `已拉取 ${modelLists[slot].length} 个模型，请在上方下拉框中选择`,
+    })
+  } catch (err) {
+    emit('test', { slot, ...creds, ok: false, text: err.message || '拉取失败' })
+  }
 }
 
 function submit() {
@@ -317,6 +500,18 @@ legend {
   color: var(--ink);
 }
 .actions { gap: 10px; }
+select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper, #fff);
+  color: var(--ink);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .result {
   margin: 0;
   padding: 8px 10px;

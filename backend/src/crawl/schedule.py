@@ -122,14 +122,24 @@ def compute_next_run(
     return slot + timedelta(days=1)
 
 
-def _validate(mode: str, daily_time: Optional[str], crawler_keys: List[str]) -> List[str]:
-    if mode not in {"hourly", "daily"}:
-        raise CrawlConfigError("节奏只能是每小时或每天")
+def _validate(
+    mode: str,
+    daily_time: Optional[str],
+    crawler_keys: List[str],
+    *,
+    interval_minutes: Optional[int] = None,
+) -> List[str]:
+    if mode not in {"manual", "interval", "hourly", "daily"}:
+        raise CrawlConfigError("节奏需为手动 / 间隔 / 每小时 / 每天")
     if mode == "daily":
         if not daily_time:
             raise CrawlConfigError("每天采集需要选择时刻")
         parse_daily_time(daily_time)
-    # 与监控页可选列表一致：去掉未知或已禁用源，避免进度分母含「看不见」的源
+    if mode == "interval":
+        mins = int(interval_minutes or 0)
+        if mins < 15:
+            raise CrawlConfigError("间隔采集至少 15 分钟")
+    # 与监控页可选列表一致：仅新闻爬虫；去掉未知或已禁用源
     try:
         from backend.src.crawlers.settings_store import list_crawler_settings
 
@@ -137,25 +147,28 @@ def _validate(mode: str, daily_time: Optional[str], crawler_keys: List[str]) -> 
             enabled = {
                 item["crawler_key"]
                 for item in list_crawler_settings(session)
-                if item.get("enabled", True)
+                if item.get("enabled", True) and item.get("kind", "news") == "news"
             }
     except Exception:
         enabled = {
             key
             for key, meta in CRAWLER_REGISTRY.items()
-            if meta.get("enabled", True)
+            if meta.get("enabled", True) and meta.get("kind", "news") == "news"
         }
     keys: List[str] = []
     for key in crawler_keys or []:
         name = str(key).strip()
-        if name not in CRAWLER_REGISTRY:
+        meta = CRAWLER_REGISTRY.get(name)
+        if meta is None:
             raise CrawlConfigError(f"未知爬虫：{name}")
+        if meta.get("kind", "news") != "news":
+            continue
         if name not in enabled:
             continue
         if name not in keys:
             keys.append(name)
     if not keys:
-        raise CrawlConfigError("至少选择一个已启用的爬虫")
+        raise CrawlConfigError("至少选择一个已启用的新闻爬虫")
     return keys
 
 
@@ -240,20 +253,22 @@ def _available() -> List[Dict[str, Any]]:
             {
                 "key": item["crawler_key"],
                 "name": item["name"],
+                "kind": item.get("kind", "news"),
                 "enabled": True,
             }
             for item in items
-            if item.get("enabled", True)
+            if item.get("enabled", True) and item.get("kind", "news") == "news"
         ]
     except Exception:
         return [
             {
                 "key": key,
                 "name": str(meta.get("name") or key),
+                "kind": meta.get("kind", "news"),
                 "enabled": True,
             }
             for key, meta in CRAWLER_REGISTRY.items()
-            if meta.get("enabled", True)
+            if meta.get("enabled", True) and meta.get("kind", "news") == "news"
         ]
 
 
@@ -305,6 +320,7 @@ def config_payload() -> Dict[str, Any]:
             "running": cfg.running,
             "schedule_mode": cfg.schedule_mode,
             "daily_time": cfg.daily_time,
+            "interval_minutes": cfg.interval_minutes,
             "crawler_keys": list(cfg.crawler_keys or []),
             "armed_at": _iso(cfg.armed_at),
             "available": _available(),
@@ -333,6 +349,7 @@ def status_payload() -> Dict[str, Any]:
             "running": cfg.running,
             "schedule_mode": cfg.schedule_mode,
             "daily_time": cfg.daily_time,
+            "interval_minutes": cfg.interval_minutes,
             "crawler_keys": list(cfg.crawler_keys or []),
             "armed_at": _iso(cfg.armed_at),
             "active": active,
@@ -358,11 +375,17 @@ def _enqueue(trigger: str) -> None:
         raise CrawlConfigError(f"无法投递采集任务，请确认 Redis 与 worker 已启动：{exc}") from exc
 
 
-def start_schedule(mode: str, daily_time: Optional[str], crawler_keys: List[str]) -> Dict[str, Any]:
+def start_schedule(
+    mode: str,
+    daily_time: Optional[str],
+    crawler_keys: List[str],
+    *,
+    interval_minutes: Optional[int] = None,
+) -> Dict[str, Any]:
     ready = llm_readiness()
     if not ready["ready"]:
         raise CrawlConfigError(ready["message"] or "尚未配置 LLM，请先到「模型配置」设置")
-    keys = _validate(mode, daily_time, crawler_keys)
+    keys = _validate(mode, daily_time, crawler_keys, interval_minutes=interval_minutes)
     with session_scope() as session:
         cfg = _get_or_create(session)
         if cfg.running:
@@ -374,15 +397,27 @@ def start_schedule(mode: str, daily_time: Optional[str], crawler_keys: List[str]
             cfg.daily_time = f"{hour:02d}:{minute:02d}"
         else:
             cfg.daily_time = None
+        if mode == "interval":
+            cfg.interval_minutes = int(interval_minutes or 60)
         cfg.crawler_keys = keys
         cfg.armed_at = now_sh()
-    try:
-        _enqueue("manual")
-    except CrawlConfigError:
-        with session_scope() as session:
-            cfg = _get_or_create(session)
-            cfg.running = False
-        raise
+    # manual / 首次启动立即跑一轮；纯定时等待 tick
+    if mode != "manual":
+        try:
+            _enqueue("manual")
+        except CrawlConfigError:
+            with session_scope() as session:
+                cfg = _get_or_create(session)
+                cfg.running = False
+            raise
+    else:
+        try:
+            _enqueue("manual")
+        except CrawlConfigError:
+            with session_scope() as session:
+                cfg = _get_or_create(session)
+                cfg.running = False
+            raise
     return status_payload()
 
 
@@ -395,12 +430,23 @@ def stop_schedule() -> Dict[str, Any]:
 
 def _is_due(session, cfg: CrawlConfig, now: datetime) -> bool:
     last = _latest_run(session)
-    if cfg.schedule_mode == "hourly":
+    mode = cfg.schedule_mode or "hourly"
+    if mode == "manual":
+        return False
+    if mode == "hourly":
         return hourly_due(
             last.started_at if last else None,
             last.status if last else None,
             now,
         )
+    if mode == "interval":
+        mins = int(cfg.interval_minutes or 60)
+        ref = last.started_at if last else cfg.armed_at
+        if ref is None:
+            return True
+        if getattr(ref, "tzinfo", None) is None:
+            ref = ref.replace(tzinfo=now.tzinfo)
+        return (now - ref).total_seconds() >= mins * 60
     return daily_due(
         now,
         cfg.armed_at,

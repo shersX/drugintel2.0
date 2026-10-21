@@ -43,6 +43,10 @@
             <span class="cap-k">重排</span>
             <span class="cap-v mono">{{ activeCaps.rerank.text }}</span>
           </div>
+          <div class="cap" :class="{ warn: activeCaps.vision.warn }">
+            <span class="cap-k">视觉</span>
+            <span class="cap-v mono">{{ activeCaps.vision.text }}</span>
+          </div>
         </div>
         <p v-if="dimMismatch" class="status-warn">启用配置的嵌入维度与库中不一致，启用前会要求确认并重建向量索引。</p>
       </section>
@@ -87,6 +91,7 @@
               <span class="tag" :class="{ miss: !item.has_chat_key }">对话 {{ item.chat_model || '—' }}</span>
               <span class="tag" :class="{ miss: !item.has_embedding_key }">嵌入 {{ item.embedding_model || '—' }}·{{ item.embedding_dim || '—' }}</span>
               <span class="tag" :class="{ miss: !item.has_reranker_key }">重排 {{ item.reranker_model || '—' }}</span>
+              <span class="tag" :class="{ miss: !item.vision_model }">视觉 {{ item.vision_model || '未配置' }}</span>
             </div>
             <div class="row profile-actions">
               <button type="button" class="secondary" :disabled="busy || item.is_active" @click="activate(item)">启用</button>
@@ -105,9 +110,11 @@
               :stamp="revision"
               :busy="busy"
               :notices="item.notices"
+              :profile-id="item.id"
               :keep-chat="item.has_chat_key"
               :keep-embedding="item.has_embedding_key"
               :keep-rerank="item.has_reranker_key"
+              :keep-vision="item.has_vision_key"
               show-cancel
               submit-label="保存修改"
               @submit="save(item, $event)"
@@ -223,68 +230,92 @@
         <span v-if="crawlerDirtyCount" class="dirty-tag">{{ crawlerDirtyCount }} 行待保存</span>
       </div>
       <p class="meta hint">
-        停用后不会出现在
+        新闻爬虫与管线爬虫分开管理。停用后不会出现在
         <router-link to="/monitor">爬虫监控</router-link>
-        的勾选列表；页数 / 并发 / 抓详情在<strong>保存后下一轮采集</strong>生效。
+        对应分区；参数在<strong>保存后下一轮</strong>生效。
       </p>
       <div v-if="crawlerLoading" class="meta">加载中…</div>
-      <div class="table-wrap" v-else-if="crawlerRows.length">
-        <table class="cfg-table crawler-table">
-          <thead>
-            <tr>
-              <th>来源</th>
-              <th>启用</th>
-              <th>
-                页数
-                <div class="col-hint">列表翻页深度</div>
-              </th>
-              <th>
-                并发
-                <div class="col-hint">详情抓取并行数</div>
-              </th>
-              <th>
-                抓详情
-                <div class="col-hint">关闭则只采列表摘要</div>
-              </th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in crawlerRows"
-              :key="row.crawler_key"
-              :class="{ 'is-off': !row.enabled, 'is-dirty': isCrawlerDirty(row) }"
-            >
-              <td>
-                <strong>{{ row.name }}</strong>
-                <div class="meta mono">{{ row.crawler_key }}</div>
-              </td>
-              <td>
-                <label class="enable-cell">
-                  <input type="checkbox" v-model="row.enabled" />
-                  <span :class="row.enabled ? 'on' : 'off'">{{ row.enabled ? '启用中' : '已停用' }}</span>
-                </label>
-              </td>
-              <td><input type="number" min="1" max="50" v-model.number="row.page_count" class="num" /></td>
-              <td><input type="number" min="1" max="20" v-model.number="row.concurrency" class="num" /></td>
-              <td><input type="checkbox" v-model="row.fetch_details" /></td>
-              <td class="crawler-save-cell">
-                <button
-                  type="button"
-                  class="secondary"
-                  :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
-                  @click="saveCrawler(row)"
-                >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
-                <span v-if="isCrawlerDirty(row) && crawlerSavedKey !== row.crawler_key" class="dirty-dot">待保存</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-else class="empty compact-empty">
-        <div class="empty-title">暂无爬虫注册项</div>
-        <p>请确认后端爬虫注册表已加载，或刷新重试。</p>
-      </div>
+      <template v-else>
+        <h4 class="sub-h">新闻爬虫</h4>
+        <div class="table-wrap" v-if="newsCrawlerRows.length">
+          <table class="cfg-table crawler-table">
+            <thead>
+              <tr>
+                <th>来源</th><th>启用</th><th>页数</th><th>并发</th><th>抓详情</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in newsCrawlerRows"
+                :key="row.crawler_key"
+                :class="{ 'is-off': !row.enabled, 'is-dirty': isCrawlerDirty(row) }"
+              >
+                <td>
+                  <strong>{{ row.name }}</strong>
+                  <div class="meta mono">{{ row.crawler_key }}</div>
+                </td>
+                <td>
+                  <label class="enable-cell">
+                    <input type="checkbox" v-model="row.enabled" />
+                    <span :class="row.enabled ? 'on' : 'off'">{{ row.enabled ? '启用中' : '已停用' }}</span>
+                  </label>
+                </td>
+                <td><input type="number" min="1" max="50" v-model.number="row.page_count" class="num" /></td>
+                <td><input type="number" min="1" max="20" v-model.number="row.concurrency" class="num" /></td>
+                <td><input type="checkbox" v-model="row.fetch_details" /></td>
+                <td class="crawler-save-cell">
+                  <button
+                    type="button"
+                    class="secondary"
+                    :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
+                    @click="saveCrawler(row)"
+                  >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="meta">暂无新闻爬虫</p>
+
+        <h4 class="sub-h">管线爬虫</h4>
+        <div class="table-wrap" v-if="pipelineCrawlerRows.length">
+          <table class="cfg-table crawler-table">
+            <thead>
+              <tr>
+                <th>来源</th><th>启用</th><th>说明</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in pipelineCrawlerRows"
+                :key="row.crawler_key"
+                :class="{ 'is-off': !row.enabled, 'is-dirty': isCrawlerDirty(row) }"
+              >
+                <td>
+                  <strong>{{ row.name }}</strong>
+                  <div class="meta mono">{{ row.crawler_key }}</div>
+                </td>
+                <td>
+                  <label class="enable-cell">
+                    <input type="checkbox" v-model="row.enabled" />
+                    <span :class="row.enabled ? 'on' : 'off'">{{ row.enabled ? '启用中' : '已停用' }}</span>
+                  </label>
+                </td>
+                <td class="meta">下载管线图片 → 视觉模型抽取（调度见监控页）</td>
+                <td class="crawler-save-cell">
+                  <button
+                    type="button"
+                    class="secondary"
+                    :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
+                    @click="saveCrawler(row)"
+                  >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="meta">暂无管线爬虫</p>
+      </template>
       <p v-if="crawlerMsg" class="meta" :class="{ 'form-error': crawlerErr }">{{ crawlerMsg }}</p>
     </section>
 
@@ -369,8 +400,8 @@ const { loading, error, run } = useAsync()
 const profiles = ref([])
 const vectorDim = ref(null)
 const busy = ref(false)
-const slotLabel = { chat: '对话', embedding: '嵌入', rerank: '重排' }
-const draftNotices = reactive({ chat: null, embedding: null, rerank: null })
+const slotLabel = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉' }
+const draftNotices = reactive({ chat: null, embedding: null, rerank: null, vision: null })
 const revision = ref(0)
 const draftKey = ref(0)
 const draft = reactive(blank())
@@ -391,6 +422,7 @@ const activeCaps = computed(() => {
       chat: { text: '.env 默认', warn: false },
       embedding: { text: '.env 默认', warn: false },
       rerank: { text: '.env 默认', warn: false },
+      vision: { text: '未配置', warn: true },
     }
   }
   return {
@@ -407,6 +439,10 @@ const activeCaps = computed(() => {
     rerank: {
       text: row.has_reranker_key ? (row.reranker_model || '—') : '缺少 Key',
       warn: !row.has_reranker_key,
+    },
+    vision: {
+      text: row.vision_model || '未配置（管线同步需要）',
+      warn: !row.vision_model,
     },
   }
 })
@@ -468,6 +504,8 @@ let crawlerSavedTimer = null
 const crawlerOnCount = computed(() => crawlerRows.value.filter((r) => r.enabled).length)
 const crawlerOffCount = computed(() => crawlerRows.value.length - crawlerOnCount.value)
 const crawlerDirtyCount = computed(() => crawlerRows.value.filter((r) => isCrawlerDirty(r)).length)
+const newsCrawlerRows = computed(() => crawlerRows.value.filter((r) => (r.kind || 'news') === 'news'))
+const pipelineCrawlerRows = computed(() => crawlerRows.value.filter((r) => r.kind === 'pipeline'))
 
 const canTestSmtp = computed(() => {
   if (!smtpForm.enabled) return false
@@ -538,6 +576,9 @@ function blank() {
     reranker_api_key: '',
     reranker_base_url: 'https://api.siliconflow.cn/v1',
     reranker_model: 'BAAI/bge-reranker-v2-m3',
+    vision_api_key: '',
+    vision_base_url: 'https://api.siliconflow.cn/v1',
+    vision_model: '',
   }
 }
 
@@ -557,6 +598,8 @@ function applyDefaults(defaults) {
   draft.embedding_dim = defaults.embedding_dim || draft.embedding_dim
   draft.reranker_base_url = defaults.reranker_base_url || draft.reranker_base_url
   draft.reranker_model = defaults.reranker_model || draft.reranker_model
+  draft.vision_base_url = defaults.vision_base_url || draft.vision_base_url
+  draft.vision_model = defaults.vision_model || draft.vision_model
 }
 
 function isDimMismatch(err) {
@@ -571,7 +614,8 @@ async function load() {
     api_key: '',
     embedding_api_key: '',
     reranker_api_key: '',
-    notices: { chat: null, embedding: null, rerank: null },
+    vision_api_key: '',
+    notices: { chat: null, embedding: null, rerank: null, vision: null },
     error: '',
   }))
   vectorDim.value = data.vector_dim
@@ -676,6 +720,10 @@ async function finishTest(target, slot, runFn) {
 }
 
 async function testDraft(form) {
+  if (form.ok === true || form.ok === false) {
+    draftNotices[form.slot] = { ok: form.ok, text: form.text || (form.ok ? '成功' : '失败') }
+    return
+  }
   await finishTest(draftNotices, form.slot, () => api.testLlmProfile({
     base_url: form.base_url,
     api_key: form.api_key,
@@ -684,6 +732,10 @@ async function testDraft(form) {
 }
 
 async function testSaved(item, form) {
+  if (form.ok === true || form.ok === false) {
+    item.notices[form.slot] = { ok: form.ok, text: form.text || (form.ok ? '成功' : '失败') }
+    return
+  }
   await finishTest(item.notices, form.slot, () => api.testLlmProfile({
     base_url: form.base_url,
     api_key: form.api_key,
@@ -984,6 +1036,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.sub-h {
+  margin: 18px 0 10px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
 .status-strip { margin-bottom: 28px; }
 .status-top {
   display: flex;

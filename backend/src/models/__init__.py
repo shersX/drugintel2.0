@@ -16,6 +16,13 @@ from backend.src.models.event import Event
 from backend.src.models.filter_keyword import FilterKeyword
 from backend.src.models.llm_profile import LlmProfile
 from backend.src.models.news import News
+from backend.src.models.pipeline import (
+    PipelineAsset,
+    PipelineChange,
+    PipelineCrawlConfig,
+    PipelineDeal,
+    PipelinePageSnapshot,
+)
 from backend.src.models.rag_config import RagConfig
 from backend.src.models.smtp_config import SmtpConfig
 
@@ -42,4 +49,9 @@ __all__ = [
     "ReportFile",
     "ChatConversation",
     "ChatMessage",
+    "PipelineAsset",
+    "PipelineChange",
+    "PipelineDeal",
+    "PipelinePageSnapshot",
+    "PipelineCrawlConfig",
 ]

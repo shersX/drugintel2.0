@@ -79,6 +79,7 @@ class ReportExportRequest(BaseModel):
 class CrawlStartRequest(BaseModel):
     schedule_mode: str
     daily_time: Optional[str] = None
+    interval_minutes: Optional[int] = None
     crawler_keys: List[str] = []
 
 
@@ -94,6 +95,9 @@ class LlmProfileWrite(BaseModel):
     reranker_api_key: Optional[str] = None
     reranker_base_url: str
     reranker_model: str
+    vision_api_key: Optional[str] = None
+    vision_base_url: str = ""
+    vision_model: str = ""
     rebuild: bool = False
 
 
@@ -102,6 +106,22 @@ class LlmProfileTest(BaseModel):
     api_key: Optional[str] = None
     profile_id: Optional[int] = None
     slot: str = "chat"
+    include_models: bool = False
+
+
+class PipelineCrawlConfigUpdate(BaseModel):
+    running: Optional[bool] = None
+    schedule_mode: Optional[str] = None
+    interval_minutes: Optional[int] = None
+    daily_time: Optional[str] = None
+    weekly_day: Optional[int] = None
+    crawler_keys: Optional[List[str]] = None
+    source_url: Optional[str] = None
+
+
+class PipelineSyncRequest(BaseModel):
+    force: bool = False
+    source_url: Optional[str] = None
 
 
 class LoginRequest(BaseModel):

@@ -3,7 +3,7 @@
     <header class="ed-head reveal">
       <div class="ed-kicker">Watchlist · 订阅名单</div>
       <h1 class="ed-title">告警订阅</h1>
-      <p class="ed-lede">关注药物、公司或关键词，新情报入库后自动邮件推送。</p>
+      <p class="ed-lede">关注药物、公司或关键词：新闻正文命中会发信；管线进度变化 / 资产消失也会按名称匹配推送。</p>
     </header>
 
     <div v-if="mailStatus && !mailStatus.ready" class="mail-banner reveal" role="status">

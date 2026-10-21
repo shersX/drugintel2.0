@@ -57,6 +57,8 @@ from backend.src.api.schemas import (
     LlmProfileWrite,
     LoginRequest,
     PasswordReset,
+    PipelineCrawlConfigUpdate,
+    PipelineSyncRequest,
     ProfileUpdate,
     RagConfigUpdate,
     ReportExportRequest,
@@ -77,12 +79,14 @@ from backend.src.crawl.schedule import (
 from backend.src.db.crud.news import format_publish_time_cn
 from backend.src.db.schema import ensure_schema
 from backend.src.db.session import session_scope
+from backend.src.core.config import vision_readiness
 from backend.src.llm.profiles import (
     DimensionMismatch,
     LlmProfileError,
     activate_profile,
     create_profile,
     delete_profile,
+    list_models,
     list_profiles,
     test_connection,
     update_profile as update_llm_profile,
@@ -679,7 +683,12 @@ def api_admin_smtp_config_test(body: SmtpTestRequest, actor: Actor = Depends(adm
 @app.post("/api/crawl/start")
 def api_crawl_start(body: CrawlStartRequest, actor: Actor = Depends(admin_actor)):
     try:
-        payload = start_schedule(body.schedule_mode, body.daily_time, body.crawler_keys)
+        payload = start_schedule(
+            body.schedule_mode,
+            body.daily_time,
+            body.crawler_keys,
+            interval_minutes=body.interval_minutes,
+        )
     except CrawlConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     record_audit(actor_id=actor.id, action="crawl_start", target="crawl")
@@ -755,6 +764,9 @@ def api_llm_profile_create(body: LlmProfileWrite, actor: Actor = Depends(admin_a
                 reranker_api_key=body.reranker_api_key or "",
                 reranker_base_url=body.reranker_base_url,
                 reranker_model=body.reranker_model,
+                vision_api_key=body.vision_api_key or "",
+                vision_base_url=body.vision_base_url or "",
+                vision_model=body.vision_model or "",
             )
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
@@ -767,6 +779,22 @@ async def api_llm_profile_test(body: LlmProfileTest, _actor: Actor = Depends(adm
     try:
         return ok(
             await test_connection(
+                base_url=body.base_url,
+                api_key=body.api_key,
+                profile_id=body.profile_id,
+                slot=body.slot,
+                include_models=body.include_models,
+            )
+        )
+    except LlmProfileError as exc:
+        raise _llm_http_error(exc) from exc
+
+
+@app.post("/api/llm/profiles/list-models")
+async def api_llm_list_models(body: LlmProfileTest, _actor: Actor = Depends(admin_actor)):
+    try:
+        return ok(
+            await list_models(
                 base_url=body.base_url,
                 api_key=body.api_key,
                 profile_id=body.profile_id,
@@ -793,6 +821,9 @@ def api_llm_profile_update(profile_id: int, body: LlmProfileWrite, actor: Actor 
                 reranker_api_key=body.reranker_api_key,
                 reranker_base_url=body.reranker_base_url,
                 reranker_model=body.reranker_model,
+                vision_api_key=body.vision_api_key,
+                vision_base_url=body.vision_base_url or "",
+                vision_model=body.vision_model or "",
                 rebuild=body.rebuild,
             )
     except LlmProfileError as exc:
@@ -819,6 +850,159 @@ def api_llm_profile_activate(profile_id: int, rebuild: bool = Query(False), acto
         raise _llm_http_error(exc) from exc
     record_audit(actor_id=actor.id, action="llm_activate", target=f"llm:{profile_id}")
     return ok(payload)
+
+
+@app.get("/api/pipeline/vision-status")
+def api_pipeline_vision_status(_actor: Actor = Depends(current_actor)):
+    return ok(vision_readiness())
+
+
+@app.get("/api/pipeline/assets")
+def api_pipeline_assets(
+    q: str = "",
+    stage: str = "",
+    company: str = "",
+    status: str = "active",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import list_assets
+
+    with session_scope() as session:
+        return ok(
+            list_assets(
+                session,
+                q=q,
+                stage=stage,
+                company=company,
+                status=status,
+                page=page,
+                page_size=page_size,
+            )
+        )
+
+
+@app.get("/api/pipeline/assets/{asset_id}")
+def api_pipeline_asset_detail(asset_id: int, _actor: Actor = Depends(current_actor)):
+    from backend.src.pipeline_intel.queries import get_asset
+
+    with session_scope() as session:
+        data = get_asset(session, asset_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="管线资产不存在")
+    return ok(data)
+
+
+@app.get("/api/pipeline/changes")
+def api_pipeline_changes(
+    limit: int = Query(50, ge=1, le=200),
+    change_kind: str = "",
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import list_changes
+
+    with session_scope() as session:
+        return ok({"items": list_changes(session, limit=limit, change_kind=change_kind)})
+
+
+@app.get("/api/pipeline/deals")
+def api_pipeline_deals(
+    limit: int = Query(50, ge=1, le=200),
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import list_deals
+
+    with session_scope() as session:
+        return ok({"items": list_deals(session, limit=limit)})
+
+
+@app.get("/api/pipeline/snapshots/{snapshot_id}")
+def api_pipeline_snapshot(snapshot_id: int, _actor: Actor = Depends(current_actor)):
+    from backend.src.pipeline_intel.queries import get_snapshot
+
+    with session_scope() as session:
+        data = get_snapshot(session, snapshot_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="快照不存在")
+    return ok(data)
+
+
+@app.get("/api/pipeline/snapshots/{snapshot_id}/images/{index}")
+def api_pipeline_snapshot_image(
+    snapshot_id: int,
+    index: int,
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import resolve_snapshot_image
+
+    with session_scope() as session:
+        path = resolve_snapshot_image(session, snapshot_id, index)
+    if path is None:
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return FileResponse(path)
+
+
+@app.get("/api/pipeline/crawl-config")
+def api_pipeline_crawl_config_get(_actor: Actor = Depends(admin_actor)):
+    from backend.src.pipeline_intel.schedule import get_pipeline_crawl_config
+
+    return ok(get_pipeline_crawl_config())
+
+
+@app.put("/api/pipeline/crawl-config")
+def api_pipeline_crawl_config_put(
+    body: PipelineCrawlConfigUpdate,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.pipeline_intel.schedule import update_pipeline_crawl_config
+
+    try:
+        payload = update_pipeline_crawl_config(
+            running=body.running,
+            schedule_mode=body.schedule_mode,
+            interval_minutes=body.interval_minutes,
+            daily_time=body.daily_time,
+            weekly_day=body.weekly_day,
+            crawler_keys=body.crawler_keys,
+            source_url=body.source_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_audit(actor_id=actor.id, action="pipeline_crawl_config", target="pipeline", detail=str(payload))
+    return ok(payload)
+
+
+@app.post("/api/pipeline/sync")
+async def api_pipeline_sync(
+    body: PipelineSyncRequest,
+    actor: Actor = Depends(admin_actor),
+):
+    ready = vision_readiness()
+    if not ready.get("ready"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "vision_not_configured",
+                "message": ready.get("message")
+                or "请先在设置 → 大模型中配置并启用视觉模型",
+            },
+        )
+    from backend.src.pipeline_intel.service import run_pipeline_sync
+
+    try:
+        result = await run_pipeline_sync(force=body.force, source_url=body.source_url)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)[:500]) from exc
+    record_audit(
+        actor_id=actor.id,
+        action="pipeline_sync",
+        target="pipeline",
+        detail=f"force={body.force}",
+    )
+    return ok(result)
 
 
 @app.get("/api/admin/rag-config")

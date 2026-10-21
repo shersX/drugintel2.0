@@ -44,6 +44,9 @@ def _active_llm_profile() -> Optional[SimpleNamespace]:
                 reranker_api_key=open_secret(row.reranker_api_key),
                 reranker_base_url=(row.reranker_base_url or "").strip().rstrip("/"),
                 reranker_model=(row.reranker_model or "").strip(),
+                vision_api_key=open_secret(row.vision_api_key),
+                vision_base_url=(row.vision_base_url or "").strip().rstrip("/"),
+                vision_model=(row.vision_model or "").strip(),
             )
     except Exception as exc:
         logger.warning("读取启用中的模型配置失败，改用环境变量: %s", exc)
@@ -153,6 +156,56 @@ class EmbeddingEnvConfig:
             reranker_base_url=row.reranker_base_url or env.reranker_base_url,
             reranker_model=row.reranker_model or env.reranker_model,
         )
+
+
+@dataclass(frozen=True)
+class VisionEnvConfig:
+    api_key: str
+    base_url: str
+    model: str
+    timeout_sec: float
+
+    @staticmethod
+    def _from_env() -> "VisionEnvConfig":
+        chat = LLMEnvConfig._from_env()
+        return VisionEnvConfig(
+            api_key=_env_text("SILICONFLOW_VISION_API_KEY", chat.api_key),
+            base_url=_env_text("SILICONFLOW_VISION_BASE_URL", chat.base_url).rstrip("/"),
+            model=_env_text("SILICONFLOW_VISION_MODEL", ""),
+            timeout_sec=float(os.getenv("VISION_TIMEOUT_SEC", "180")),
+        )
+
+    @staticmethod
+    def load() -> "VisionEnvConfig":
+        env = VisionEnvConfig._from_env()
+        row = _active_llm_profile()
+        if row is None:
+            return env
+        return VisionEnvConfig(
+            api_key=row.vision_api_key or row.api_key or env.api_key,
+            base_url=row.vision_base_url or row.base_url or env.base_url,
+            model=row.vision_model or env.model,
+            timeout_sec=env.timeout_sec,
+        )
+
+
+def vision_readiness() -> dict:
+    """管线同步前：是否已配置视觉模型。"""
+    cfg = VisionEnvConfig.load()
+    missing: list[str] = []
+    if not cfg.api_key:
+        missing.append("视觉 API Key")
+    if not cfg.model:
+        missing.append("视觉模型")
+    if missing:
+        return {
+            "ready": False,
+            "message": (
+                f"{'、'.join(missing)} 未设置。"
+                "请先到「设置 → 大模型」配置并启用视觉模型后再同步管线。"
+            ),
+        }
+    return {"ready": True, "message": None, "model": cfg.model}
 
 
 @dataclass(frozen=True)

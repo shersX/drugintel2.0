@@ -26,6 +26,14 @@ _KEY_ATTR = {
     "embedding": "embedding_api_key",
     "rerank": "reranker_api_key",
     "reranker": "reranker_api_key",
+    "vision": "vision_api_key",
+}
+_URL_ATTR = {
+    "chat": "base_url",
+    "embedding": "embedding_base_url",
+    "rerank": "reranker_base_url",
+    "reranker": "reranker_base_url",
+    "vision": "vision_base_url",
 }
 
 
@@ -94,6 +102,10 @@ def _public(row: LlmProfile) -> Dict[str, Any]:
         "reranker_model": row.reranker_model,
         "has_reranker_key": bool(row.reranker_api_key),
         "reranker_key_hint": _mask_key(open_secret(row.reranker_api_key)),
+        "vision_base_url": row.vision_base_url or "",
+        "vision_model": row.vision_model or "",
+        "has_vision_key": bool(row.vision_api_key),
+        "vision_key_hint": _mask_key(open_secret(row.vision_api_key)),
         "is_active": row.is_active,
     }
 
@@ -107,6 +119,8 @@ def _defaults() -> Dict[str, Any]:
         "embedding_dim": DEFAULT_EMBEDDING_DIM,
         "reranker_base_url": DEFAULT_BASE_URL,
         "reranker_model": DEFAULT_RERANKER_MODEL,
+        "vision_base_url": DEFAULT_BASE_URL,
+        "vision_model": "",
     }
 
 
@@ -135,8 +149,12 @@ def create_profile(
     reranker_api_key: str,
     reranker_base_url: str,
     reranker_model: str,
+    vision_api_key: str = "",
+    vision_base_url: str = "",
+    vision_model: str = "",
 ) -> Dict[str, Any]:
     with session_scope() as session:
+        v_url = _clean_url(vision_base_url) if (vision_base_url or "").strip() else ""
         row = LlmProfile(
             name=_require_text(name, "名称")[:100],
             api_key=seal(_require_text(api_key, "对话 API Key")),
@@ -149,6 +167,9 @@ def create_profile(
             reranker_api_key=seal(_require_text(reranker_api_key, "重排 API Key")),
             reranker_base_url=_clean_url(_require_text(reranker_base_url, "重排 Base URL"))[:300],
             reranker_model=_require_text(reranker_model, "重排模型")[:200],
+            vision_api_key=seal((vision_api_key or "").strip()) if (vision_api_key or "").strip() else "",
+            vision_base_url=(v_url or _clean_url(base_url))[:300],
+            vision_model=(vision_model or "").strip()[:200],
             is_active=False,
         )
         session.add(row)
@@ -179,6 +200,9 @@ def update_profile(
     reranker_api_key: Optional[str],
     reranker_base_url: str,
     reranker_model: str,
+    vision_api_key: Optional[str] = None,
+    vision_base_url: str = "",
+    vision_model: str = "",
     rebuild: bool = False,
 ) -> Dict[str, Any]:
     dim = _require_dim(embedding_dim)
@@ -199,6 +223,12 @@ def update_profile(
         row.reranker_base_url = _clean_url(_require_text(reranker_base_url, "重排 Base URL"))[:300]
         row.reranker_model = _require_text(reranker_model, "重排模型")[:200]
         row.reranker_api_key = _assign_key(row.reranker_api_key, reranker_api_key, "重排 API Key")
+        v_url = _clean_url(vision_base_url) if (vision_base_url or "").strip() else row.base_url
+        row.vision_base_url = (v_url or row.base_url)[:300]
+        row.vision_model = (vision_model or "").strip()[:200]
+        # 视觉 Key 可留空（新闻链路不依赖）；有输入则更新，留空且已有则保留
+        if (vision_api_key or "").strip():
+            row.vision_api_key = seal(vision_api_key.strip())
         return _public(row)
 
 
@@ -254,12 +284,24 @@ def _stored_key(profile_id: Optional[int], slot: str) -> str:
         return open_secret(getattr(row, attr) or "")
 
 
+def _guess_model_kind(model_id: str) -> str:
+    mid = (model_id or "").lower()
+    if any(x in mid for x in ("embed", "bge-m3", "bge-large", "text-embedding")):
+        return "embedding"
+    if "rerank" in mid:
+        return "rerank"
+    if any(x in mid for x in ("vl", "vision", "gpt-4o", "qwen2.5-vl", "qwen-vl", "internvl")):
+        return "vision"
+    return "chat"
+
+
 async def test_connection(
     *,
     base_url: str,
     api_key: Optional[str],
     profile_id: Optional[int] = None,
     slot: str = "chat",
+    include_models: bool = False,
 ) -> Dict[str, Any]:
     url = _clean_url(_require_text(base_url, "Base URL"))
     key = (api_key or "").strip() or _stored_key(profile_id, slot)
@@ -272,11 +314,51 @@ async def test_connection(
                 f"{url}/models",
                 headers={"Authorization": f"Bearer {key}"},
             ) as resp:
+                text = await resp.text()
                 if resp.status >= 400:
-                    text = (await resp.text())[:200]
-                    raise LlmProfileError(f"接口返回 HTTP {resp.status} {text}".strip())
+                    raise LlmProfileError(f"接口返回 HTTP {resp.status} {text[:200]}".strip())
+                if not include_models:
+                    return {"ok": True}
+                try:
+                    payload = __import__("json").loads(text)
+                except Exception as exc:
+                    raise LlmProfileError(f"无法解析模型列表：{exc}") from exc
+                rows = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(rows, list):
+                    rows = []
+                models = []
+                for item in rows:
+                    if not isinstance(item, dict):
+                        continue
+                    mid = str(item.get("id") or "").strip()
+                    if not mid:
+                        continue
+                    models.append(
+                        {
+                            "id": mid,
+                            "owned_by": item.get("owned_by"),
+                            "kind": _guess_model_kind(mid),
+                        }
+                    )
+                models.sort(key=lambda m: m["id"].lower())
+                return {"ok": True, "models": models}
     except LlmProfileError:
         raise
     except Exception as exc:
         raise LlmProfileError(f"无法连接：{exc}") from exc
-    return {"ok": True}
+
+
+async def list_models(
+    *,
+    base_url: str,
+    api_key: Optional[str],
+    profile_id: Optional[int] = None,
+    slot: str = "chat",
+) -> Dict[str, Any]:
+    return await test_connection(
+        base_url=base_url,
+        api_key=api_key,
+        profile_id=profile_id,
+        slot=slot,
+        include_models=True,
+    )

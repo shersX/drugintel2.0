@@ -133,6 +133,7 @@ const navItems = computed(() => {
   const items = [
     { to: '/', label: '仪表盘' },
     { to: '/news', label: '情报流' },
+    { to: '/pipeline', label: '研发管线' },
     { to: '/chat', label: 'AI 问答' },
     { to: '/alerts', label: '监测订阅' },
   ]

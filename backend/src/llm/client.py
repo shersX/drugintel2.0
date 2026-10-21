@@ -42,19 +42,22 @@ class SiliconFlowClient:
             max_retries=cfg.max_retries,
         )
 
-    async def chat_completion(self, messages: List[Dict[str, str]]):
+    async def chat_completion(self, messages: List[Dict[str, Any]]):
+        """messages 的 content 可为字符串，或 OpenAI 多模态 content 数组。"""
         assert self._semaphore is not None
         async with self._semaphore:
             return await self._chat_completion_unlocked(messages, stream=False)
 
-    async def chat_completion_stream(self, messages: List[Dict[str, str]]):
+    async def chat_completion_stream(self, messages: List[Dict[str, Any]]):
         """异步生成器：逐段产出 content delta。"""
         assert self._semaphore is not None
         async with self._semaphore:
             async for chunk in self._chat_completion_stream_unlocked(messages):
                 yield chunk
 
-    async def _chat_completion_unlocked(self, messages: List[Dict[str, str]], *, stream: bool = False):
+    async def _chat_completion_unlocked(
+        self, messages: List[Dict[str, Any]], *, stream: bool = False
+    ):
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
             "model": self._model,
@@ -101,7 +104,7 @@ class SiliconFlowClient:
             raise last_exc
         return ""
 
-    async def _chat_completion_stream_unlocked(self, messages: List[Dict[str, str]]):
+    async def _chat_completion_stream_unlocked(self, messages: List[Dict[str, Any]]):
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
             "model": self._model,

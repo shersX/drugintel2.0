@@ -131,9 +131,11 @@ def _pick_rotating_user_agent(last_user_agent: Optional[str] = None) -> str:
 
 
 # 爬虫注册表：每个爬虫的配置
+# kind=news 走新闻流水线；kind=pipeline 走管线视觉抽取，不进新闻批处理
 CRAWLER_REGISTRY = {
     "bioon": {
         "name": "Bioon新闻",
+        "kind": "news",
         "function": BioonSpider,
         "enabled": True,
         "page_count": 1,
@@ -142,6 +144,7 @@ CRAWLER_REGISTRY = {
     },
     "globenewswire": {
         "name": "GlobeNewswire新闻",
+        "kind": "news",
         "function": GlobeNewswireSpider,
         "enabled": True,
         "page_count": 1,
@@ -150,6 +153,7 @@ CRAWLER_REGISTRY = {
     },
     "prnewswire": {
         "name": "PrNewswire新闻",
+        "kind": "news",
         "function": PrNewswireSpider,
         "enabled": True,
         "page_count": 1,
@@ -158,13 +162,31 @@ CRAWLER_REGISTRY = {
     },
     "pharmcube": {
         "name": "医药魔方新闻",
+        "kind": "news",
         "function": PharmcubeSpider,
         "enabled": False,
         "page_count": 1,
         "fetch_details": True,
         "concurrency": 2,
     },
+    "simcere_pipeline": {
+        "name": "先声药业管线",
+        "kind": "pipeline",
+        "function": None,
+        "enabled": True,
+        "page_count": 1,
+        "fetch_details": False,
+        "concurrency": 1,
+    },
 }
+
+
+def news_crawler_keys() -> List[str]:
+    return [k for k, v in CRAWLER_REGISTRY.items() if v.get("kind", "news") == "news"]
+
+
+def pipeline_crawler_keys() -> List[str]:
+    return [k for k, v in CRAWLER_REGISTRY.items() if v.get("kind") == "pipeline"]
 
 
 class _StatsCapture(logging.Handler):
@@ -274,10 +296,12 @@ async def run_all_crawlers(
         name: config
         for name, config in crawler_configs.items()
         if config.get("enabled", True)
+        and config.get("kind", "news") == "news"
+        and config.get("function") is not None
     }
 
     if not enabled_crawlers:
-        logger.warning("没有启用的爬虫")
+        logger.warning("没有启用的新闻爬虫")
         return CrawlerBatch()
 
     logger.info("%s", "=" * 80)

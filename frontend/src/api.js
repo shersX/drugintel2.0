@@ -101,6 +101,36 @@ export const api = {
     { method: 'POST' },
   ),
   testLlmProfile: (body) => request('/api/llm/profiles/test', { method: 'POST', body: JSON.stringify(body) }),
+  listLlmModels: (body) => request('/api/llm/profiles/list-models', { method: 'POST', body: JSON.stringify(body) }),
+  pipelineAssets: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+    })
+    return request(`/api/pipeline/assets?${q}`)
+  },
+  pipelineAsset: (id) => request(`/api/pipeline/assets/${id}`),
+  pipelineChanges: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+    })
+    return request(`/api/pipeline/changes?${q}`)
+  },
+  pipelineDeals: (limit = 50) => request(`/api/pipeline/deals?limit=${limit}`),
+  pipelineVisionStatus: () => request('/api/pipeline/vision-status'),
+  pipelineCrawlConfig: () => request('/api/pipeline/crawl-config'),
+  updatePipelineCrawlConfig: (body) => request('/api/pipeline/crawl-config', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+  pipelineSync: (body = {}) => request('/api/pipeline/sync', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+  pipelineSnapshot: (id) => request(`/api/pipeline/snapshots/${id}`),
+  pipelineSnapshotImageUrl: (id, index) => `/api/pipeline/snapshots/${id}/images/${index}`,
+  stages: () => request('/api/stats/stages'),
   ragConfig: () => request('/api/admin/rag-config'),
   updateRagConfig: (body) => request('/api/admin/rag-config', { method: 'PUT', body: JSON.stringify(body) }),
   adminCrawlers: () => request('/api/admin/crawlers'),

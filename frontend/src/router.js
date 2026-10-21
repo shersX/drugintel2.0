@@ -4,6 +4,8 @@ import NewsList from './views/NewsList.vue'
 import NewsDetail from './views/NewsDetail.vue'
 import Chat from './views/Chat.vue'
 import Alerts from './views/Alerts.vue'
+import PipelineList from './views/PipelineList.vue'
+import PipelineDetail from './views/PipelineDetail.vue'
 import Monitor from './views/Monitor.vue'
 import Settings from './views/Settings.vue'
 import Login from './views/Login.vue'
@@ -21,6 +23,8 @@ const router = createRouter({
     { path: '/news/:id', component: NewsDetail, props: true, meta: { public: true } },
     { path: '/chat', component: Chat, meta: { public: true } },
     { path: '/alerts', component: Alerts },
+    { path: '/pipeline', component: PipelineList },
+    { path: '/pipeline/:id', component: PipelineDetail, props: true },
     { path: '/account', component: Account },
     { path: '/monitor', component: Monitor, meta: { admin: true } },
     { path: '/settings', component: Settings, meta: { admin: true } },

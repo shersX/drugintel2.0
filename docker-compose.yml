@@ -43,6 +43,7 @@ services:
       LLM_KEY_FILE: "/run/drugintel-secrets/llm.key"
     volumes:
       - ./data/secrets:/run/drugintel-secrets
+      - ./data/pipeline_snapshots:/app/data/pipeline_snapshots
     depends_on:
       db:
         condition: service_healthy
@@ -64,6 +65,7 @@ services:
       - ./data/secrets:/run/drugintel-secrets
       # 增量已见 URL（JSON）；与库内 detail_url 一并用于列表页跳过详情
       - ./outjson:/app/outjson
+      - ./data/pipeline_snapshots:/app/data/pipeline_snapshots
     command: ["celery", "-A", "tasks.celery_app.celery_app", "worker", "-l", "info", "--concurrency", "1"]
     depends_on:
       db:
@@ -85,6 +87,7 @@ services:
     volumes:
       - ./data/secrets:/run/drugintel-secrets
       - ./outjson:/app/outjson
+      - ./data/pipeline_snapshots:/app/data/pipeline_snapshots
     command: ["celery", "-A", "tasks.celery_app.celery_app", "beat", "-l", "info"]
     depends_on:
       db:
