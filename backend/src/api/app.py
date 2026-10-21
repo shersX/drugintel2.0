@@ -61,6 +61,8 @@ from backend.src.api.schemas import (
     RagConfigUpdate,
     ReportExportRequest,
     UserCreate,
+    SmtpConfigUpdate,
+    SmtpTestRequest,
     WatchlistCreate,
 )
 from backend.src.clustering.service import run_clustering
@@ -595,6 +597,83 @@ def api_watchlist_delete(watchlist_id: int, actor: Actor = Depends(current_actor
         if not delete_watchlist(session, watchlist_id, actor.id):
             raise HTTPException(404, "watchlist not found")
         return ok({"deleted": watchlist_id})
+
+
+@app.get("/api/alerts/mail-status")
+def api_alerts_mail_status(_actor: Actor = Depends(current_actor)):
+    from backend.src.alerts.smtp_settings import mail_status_dict
+
+    return ok(mail_status_dict())
+
+
+@app.get("/api/admin/smtp-config")
+def api_admin_smtp_config_get(_actor: Actor = Depends(admin_actor)):
+    from backend.src.alerts.smtp_settings import (
+        get_or_create_smtp_config,
+        smtp_config_to_admin_dict,
+    )
+
+    with session_scope() as session:
+        row = get_or_create_smtp_config(session)
+        return ok(smtp_config_to_admin_dict(row))
+
+
+@app.put("/api/admin/smtp-config")
+def api_admin_smtp_config_put(body: SmtpConfigUpdate, actor: Actor = Depends(admin_actor)):
+    from backend.src.alerts.smtp_settings import (
+        smtp_config_to_admin_dict,
+        update_smtp_settings,
+    )
+
+    with session_scope() as session:
+        row = update_smtp_settings(
+            session,
+            host=body.host,
+            port=body.port,
+            user=body.user,
+            from_addr=body.from_addr,
+            use_tls=body.use_tls,
+            enabled=body.enabled,
+            password=body.password,
+        )
+        payload = smtp_config_to_admin_dict(row)
+    record_audit(
+        actor_id=actor.id,
+        action="smtp_config_update",
+        target="smtp_config",
+        detail=f"host={payload.get('host') or '-'},ready={payload.get('ready')}",
+    )
+    return ok(payload)
+
+
+@app.post("/api/admin/smtp-config/test")
+def api_admin_smtp_config_test(body: SmtpTestRequest, actor: Actor = Depends(admin_actor)):
+    from backend.src.alerts.matcher import send_email
+    from backend.src.alerts.smtp_settings import is_smtp_ready, load_smtp_settings
+
+    to_email = (body.to_email or "").strip()
+    if "@" not in to_email:
+        raise HTTPException(status_code=400, detail="请填写有效的测试收件邮箱")
+    cfg = load_smtp_settings()
+    if not is_smtp_ready(cfg):
+        raise HTTPException(status_code=400, detail="邮件通道未就绪，请先保存有效的 SMTP 配置")
+    ok_send = send_email(
+        to_addr=to_email,
+        subject="[DrugIntel] SMTP 测试邮件",
+        html_body=(
+            "<p>这是一封 DrugIntel 告警通道测试邮件。</p>"
+            "<p>若你收到此信，说明 SMTP 配置可用。</p>"
+        ),
+    )
+    record_audit(
+        actor_id=actor.id,
+        action="smtp_config_test",
+        target="smtp_config",
+        detail=f"to={to_email},ok={ok_send}",
+    )
+    if not ok_send:
+        raise HTTPException(status_code=502, detail="测试邮件发送失败，请检查 SMTP 主机、账号与密码")
+    return ok({"sent": True, "to": to_email})
 
 
 @app.post("/api/crawl/start")

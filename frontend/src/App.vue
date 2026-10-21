@@ -38,7 +38,8 @@
             :next="route.fullPath"
             :admin="gateIsAdmin"
           />
-          <component v-else :is="Component" :key="route.fullPath" />
+          <!-- 用 path 作 key：query（如 settings?tab=）变化不整页重挂 -->
+          <component v-else :is="Component" :key="route.path" />
         </Transition>
       </router-view>
     </main>
@@ -138,7 +139,7 @@ const navItems = computed(() => {
   if (session.user?.role === 'admin') {
     items.push(
       { to: '/monitor', label: '爬虫监控' },
-      { to: '/settings', label: '模型配置' },
+      { to: '/settings', label: '系统设置' },
       { to: '/users', label: '用户' },
     )
   }

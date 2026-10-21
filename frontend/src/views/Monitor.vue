@@ -71,7 +71,7 @@
         </div>
         <div v-if="crawl && crawl.llm_ready === false" class="llm-gate">
           <p class="form-error">{{ crawl.llm_message || '尚未配置 LLM，无法启动采集。' }}</p>
-          <router-link class="llm-gate-link" to="/settings">前往模型配置</router-link>
+          <router-link class="llm-gate-link" to="/settings">前往系统设置</router-link>
         </div>
         <div v-if="crawl?.last_run?.error" class="run-error">
           <p class="form-error">最近一轮失败：{{ shortError(crawl.last_run.error) }}</p>
@@ -432,7 +432,7 @@ async function load() {
 async function startCrawl() {
   actionError.value = ''
   if (!llmReady.value) {
-    actionError.value = crawl.value?.llm_message || '尚未配置 LLM，请先到「模型配置」设置'
+    actionError.value = crawl.value?.llm_message || '尚未配置 LLM，请先到「系统设置」配置大模型'
     return
   }
   actionLoading.value = true

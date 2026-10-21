@@ -55,6 +55,20 @@ class WatchlistCreate(BaseModel):
     enabled: bool = True
 
 
+class SmtpConfigUpdate(BaseModel):
+    host: str = ""
+    port: int = Field(587, ge=1, le=65535)
+    user: str = ""
+    password: Optional[str] = None  # 留空不改
+    from_addr: str = ""
+    use_tls: bool = True
+    enabled: bool = True
+
+
+class SmtpTestRequest(BaseModel):
+    to_email: str = Field(..., min_length=3, max_length=200)
+
+
 class ReportExportRequest(BaseModel):
     question: str
     answer: str

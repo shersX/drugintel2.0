@@ -3,7 +3,7 @@
     <header class="ed-head reveal">
       <div class="ed-kicker">Admin · 系统配置</div>
       <h1 class="ed-title">系统设置</h1>
-      <p class="ed-lede">模型、检索、爬虫与关键词。改完即对后续请求和采集生效。</p>
+      <p class="ed-lede">大模型、检索、邮件、爬虫与关键词。改完即对后续请求和采集生效。</p>
     </header>
 
     <nav class="tabs reveal" aria-label="设置分区">
@@ -17,7 +17,7 @@
       >{{ tab.label }}</button>
     </nav>
 
-    <!-- 模型配置 -->
+    <!-- 大模型 -->
     <div v-show="activeTab === 'models'">
       <section class="card status-strip reveal">
         <div class="status-top">
@@ -144,40 +144,146 @@
       <p v-if="ragMsg" class="meta" :class="{ 'form-error': ragErr }">{{ ragMsg }}</p>
     </section>
 
+    <!-- 邮件 SMTP -->
+    <section v-show="activeTab === 'mail'" class="card reveal mail-card">
+      <div class="sec-mark"><span class="no">01</span><h3>告警邮件 SMTP</h3><span class="rule"></span></div>
+      <p class="meta hint">
+        监测订阅命中后经此通道发信。建议先保存配置，再发测试邮件确认可通。
+        <span v-if="smtpForm.source === 'env' && smtpForm.env_host">当前生效来自 .env，保存后将写入数据库。</span>
+      </p>
+      <div class="mail-status" :class="{ ok: smtpForm.ready, bad: !smtpForm.ready }">
+        <strong>{{ smtpForm.message || (smtpForm.ready ? '通道已就绪' : '通道未就绪') }}</strong>
+        <span v-if="smtpForm.password_set" class="meta">密码已保存</span>
+      </div>
+      <div class="smtp-fields">
+        <div class="field">
+          <label for="smtp-host">SMTP 主机</label>
+          <p class="field-help">邮箱服务商的发信服务器，如 QQ <code>smtp.qq.com</code>、163 <code>smtp.163.com</code>、Gmail <code>smtp.gmail.com</code></p>
+          <input id="smtp-host" type="text" v-model="smtpForm.host" placeholder="smtp.qq.com" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="smtp-port">端口</label>
+          <p class="field-help">网易/QQ 等若 587 超时，改用 <code>465</code>（SSL，无需 STARTTLS）；<code>587</code> 则勾选 STARTTLS</p>
+          <input id="smtp-port" type="number" min="1" max="65535" v-model.number="smtpForm.port" />
+        </div>
+        <div class="field">
+          <label for="smtp-user">用户名（登录账号）</label>
+          <p class="field-help">用来<strong>登录 SMTP</strong>的账号，多数邮箱填完整邮箱地址（如 <code>name@qq.com</code>），不是昵称</p>
+          <input id="smtp-user" type="text" v-model="smtpForm.user" placeholder="name@qq.com" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="smtp-password">密码 / 授权码</label>
+          <p class="field-help">多数服务商要填网页邮箱里生成的<strong>授权码</strong>，不是登录密码；已保存后留空表示不改</p>
+          <input
+            id="smtp-password"
+            type="password"
+            v-model="smtpForm.password"
+            :placeholder="smtpForm.password_set ? '已设置，留空不改' : '粘贴授权码'"
+            autocomplete="new-password"
+          />
+        </div>
+        <div class="field smtp-from">
+          <label for="smtp-from">发件人（收件人看到的 From）</label>
+          <p class="field-help">出现在邮件「发件人」里的地址；个人邮箱一般与用户名填<strong>同一个邮箱</strong>即可</p>
+          <input id="smtp-from" type="text" v-model="smtpForm.from_addr" placeholder="name@qq.com（可与用户名相同）" />
+        </div>
+      </div>
+      <div class="smtp-toggles">
+        <label class="check"><input type="checkbox" v-model="smtpForm.use_tls" /> 启用 STARTTLS（仅端口 587；465 会自动走 SSL）</label>
+        <label class="check"><input type="checkbox" v-model="smtpForm.enabled" /> 启用邮件通道</label>
+      </div>
+      <div class="smtp-actions-block">
+        <div class="row smtp-actions">
+          <button type="button" :disabled="smtpBusy" @click="saveSmtp">{{ smtpBusy ? '保存中…' : '保存配置' }}</button>
+        </div>
+        <div class="smtp-test-row">
+          <div class="field smtp-test-input">
+            <label for="smtp-test-to">测试收件邮箱</label>
+            <p class="field-help">配置齐备后发一封测试信，确认通道可通</p>
+            <input id="smtp-test-to" type="email" v-model="smtpTestTo" placeholder="you@example.com" />
+          </div>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="smtpBusy || !canTestSmtp || !smtpTestTo.trim()"
+            @click="testSmtp"
+          >{{ smtpBusy ? '处理中…' : '发送测试邮件' }}</button>
+        </div>
+        <p v-if="!canTestSmtp" class="meta smtp-test-hint">请先填完主机、登录账号、密码（或已保存密码）并启用通道，再测试。</p>
+      </div>
+      <p v-if="smtpMsg" class="meta" :class="{ 'form-error': smtpErr }">{{ smtpMsg }}</p>
+    </section>
+
     <!-- 爬虫注册表 -->
     <section v-show="activeTab === 'crawlers'" class="card reveal">
       <div class="sec-mark"><span class="no">01</span><h3>爬虫注册表</h3><span class="rule"></span></div>
-      <p class="meta hint">禁用后不会出现在监控页勾选列表。页数 / 并发 / 是否抓详情对下一轮采集生效。</p>
-      <div class="table-wrap" v-if="crawlerRows.length">
-        <table class="cfg-table">
+      <div class="crawler-status" :class="{ warn: crawlerOffCount > 0 }">
+        <strong>已启用 {{ crawlerOnCount }} / 共 {{ crawlerRows.length }}</strong>
+        <span v-if="crawlerOffCount" class="meta">停用 {{ crawlerOffCount }} 个</span>
+        <span v-if="crawlerDirtyCount" class="dirty-tag">{{ crawlerDirtyCount }} 行待保存</span>
+      </div>
+      <p class="meta hint">
+        停用后不会出现在
+        <router-link to="/monitor">爬虫监控</router-link>
+        的勾选列表；页数 / 并发 / 抓详情在<strong>保存后下一轮采集</strong>生效。
+      </p>
+      <div v-if="crawlerLoading" class="meta">加载中…</div>
+      <div class="table-wrap" v-else-if="crawlerRows.length">
+        <table class="cfg-table crawler-table">
           <thead>
             <tr>
               <th>来源</th>
               <th>启用</th>
-              <th>页数</th>
-              <th>并发</th>
-              <th>抓详情</th>
+              <th>
+                页数
+                <div class="col-hint">列表翻页深度</div>
+              </th>
+              <th>
+                并发
+                <div class="col-hint">详情抓取并行数</div>
+              </th>
+              <th>
+                抓详情
+                <div class="col-hint">关闭则只采列表摘要</div>
+              </th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in crawlerRows" :key="row.crawler_key">
+            <tr
+              v-for="row in crawlerRows"
+              :key="row.crawler_key"
+              :class="{ 'is-off': !row.enabled, 'is-dirty': isCrawlerDirty(row) }"
+            >
               <td>
                 <strong>{{ row.name }}</strong>
                 <div class="meta mono">{{ row.crawler_key }}</div>
               </td>
-              <td><input type="checkbox" v-model="row.enabled" /></td>
+              <td>
+                <label class="enable-cell">
+                  <input type="checkbox" v-model="row.enabled" />
+                  <span :class="row.enabled ? 'on' : 'off'">{{ row.enabled ? '启用中' : '已停用' }}</span>
+                </label>
+              </td>
               <td><input type="number" min="1" max="50" v-model.number="row.page_count" class="num" /></td>
               <td><input type="number" min="1" max="20" v-model.number="row.concurrency" class="num" /></td>
               <td><input type="checkbox" v-model="row.fetch_details" /></td>
-              <td>
-                <button type="button" class="secondary" :disabled="crawlerBusy === row.crawler_key" @click="saveCrawler(row)">
-                  {{ crawlerBusy === row.crawler_key ? '…' : '保存' }}
-                </button>
+              <td class="crawler-save-cell">
+                <button
+                  type="button"
+                  class="secondary"
+                  :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
+                  @click="saveCrawler(row)"
+                >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
+                <span v-if="isCrawlerDirty(row) && crawlerSavedKey !== row.crawler_key" class="dirty-dot">待保存</span>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+      <div v-else class="empty compact-empty">
+        <div class="empty-title">暂无爬虫注册项</div>
+        <p>请确认后端爬虫注册表已加载，或刷新重试。</p>
       </div>
       <p v-if="crawlerMsg" class="meta" :class="{ 'form-error': crawlerErr }">{{ crawlerMsg }}</p>
     </section>
@@ -241,17 +347,23 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { useAsync } from '../composables'
 import ProfileForm from './ProfileForm.vue'
 
+const route = useRoute()
+const router = useRouter()
+
 const tabs = [
-  { id: 'models', label: '模型配置' },
+  { id: 'models', label: '大模型' },
   { id: 'rag', label: 'RAG 检索' },
+  { id: 'mail', label: '邮件服务' },
   { id: 'crawlers', label: '爬虫注册表' },
   { id: 'keywords', label: '过滤关键词' },
 ]
-const activeTab = ref('models')
+const tabIds = new Set(tabs.map((t) => t.id))
+const activeTab = ref(tabIds.has(route.query.tab) ? String(route.query.tab) : 'models')
 
 const { loading, error, run } = useAsync()
 const profiles = ref([])
@@ -323,13 +435,68 @@ function cancelEdit() {
 
 const ragForm = reactive({ top_k: 10, min_relevance_score: 0.25 })
 const ragBusy = ref(false)
+const smtpForm = reactive({
+  host: '',
+  port: 587,
+  user: '',
+  password: '',
+  from_addr: '',
+  use_tls: true,
+  enabled: true,
+  password_set: false,
+  ready: false,
+  message: '',
+  source: 'db',
+  env_host: '',
+})
+const smtpBusy = ref(false)
+const smtpMsg = ref('')
+const smtpErr = ref(false)
+const smtpTestTo = ref('')
 const ragMsg = ref('')
 const ragErr = ref(false)
 
 const crawlerRows = ref([])
+const crawlerSnapshot = ref({})
+const crawlerLoading = ref(false)
 const crawlerBusy = ref('')
+const crawlerSavedKey = ref('')
 const crawlerMsg = ref('')
 const crawlerErr = ref(false)
+let crawlerSavedTimer = null
+
+const crawlerOnCount = computed(() => crawlerRows.value.filter((r) => r.enabled).length)
+const crawlerOffCount = computed(() => crawlerRows.value.length - crawlerOnCount.value)
+const crawlerDirtyCount = computed(() => crawlerRows.value.filter((r) => isCrawlerDirty(r)).length)
+
+const canTestSmtp = computed(() => {
+  if (!smtpForm.enabled) return false
+  if (!smtpForm.host.trim()) return false
+  if (!smtpForm.user.trim() && !smtpForm.from_addr.trim()) return false
+  if (!smtpForm.password.trim() && !smtpForm.password_set) return false
+  return true
+})
+
+function crawlerSnapKey(row) {
+  return JSON.stringify({
+    enabled: Boolean(row.enabled),
+    page_count: Number(row.page_count),
+    concurrency: Number(row.concurrency),
+    fetch_details: Boolean(row.fetch_details),
+  })
+}
+
+function rememberCrawlerSnapshot(rows) {
+  const map = {}
+  for (const row of rows) map[row.crawler_key] = crawlerSnapKey(row)
+  crawlerSnapshot.value = map
+}
+
+function isCrawlerDirty(row) {
+  const prev = crawlerSnapshot.value[row.crawler_key]
+  if (!prev) return false
+  return prev !== crawlerSnapKey(row)
+}
 
 const kwCategory = ref('靶点')
 const kwQuery = ref('')
@@ -341,7 +508,22 @@ const kwBusy = ref(false)
 const kwMsg = ref('')
 const kwErr = ref(false)
 const kwNew = reactive({ canonical: '', aliasesText: '' })
-const loaded = reactive({ models: false, rag: false, crawlers: false, keywords: false })
+const loaded = reactive({ models: false, rag: false, mail: false, crawlers: false, keywords: false })
+
+function applySmtp(data) {
+  smtpForm.host = data.host || ''
+  smtpForm.port = data.port ?? 587
+  smtpForm.user = data.user || ''
+  smtpForm.from_addr = data.from_addr || ''
+  smtpForm.use_tls = data.use_tls !== false
+  smtpForm.enabled = data.enabled !== false
+  smtpForm.password_set = Boolean(data.password_set)
+  smtpForm.ready = Boolean(data.ready)
+  smtpForm.message = data.message || ''
+  smtpForm.source = data.source || 'db'
+  smtpForm.env_host = data.env_host || ''
+  smtpForm.password = ''
+}
 
 function blank() {
   return {
@@ -523,6 +705,75 @@ async function loadRag() {
   }
 }
 
+async function loadSmtp() {
+  smtpMsg.value = ''
+  smtpErr.value = false
+  try {
+    applySmtp(await api.smtpConfig())
+    loaded.mail = true
+  } catch (e) {
+    smtpErr.value = true
+    smtpMsg.value = e.message || '加载失败'
+  }
+}
+
+async function saveSmtp({ quiet = false } = {}) {
+  smtpBusy.value = true
+  if (!quiet) {
+    smtpMsg.value = ''
+    smtpErr.value = false
+  }
+  try {
+    const body = {
+      host: smtpForm.host.trim(),
+      port: smtpForm.port,
+      user: smtpForm.user.trim(),
+      from_addr: smtpForm.from_addr.trim() || smtpForm.user.trim(),
+      use_tls: smtpForm.use_tls,
+      enabled: smtpForm.enabled,
+    }
+    if (smtpForm.password.trim()) body.password = smtpForm.password.trim()
+    applySmtp(await api.updateSmtpConfig(body))
+    if (!quiet) {
+      smtpMsg.value = smtpForm.ready
+        ? '已保存，通道就绪'
+        : (smtpForm.message ? `已保存。${smtpForm.message}` : '已保存，通道仍未就绪')
+    }
+    return true
+  } catch (e) {
+    smtpErr.value = true
+    smtpMsg.value = e.message || '保存失败'
+    return false
+  } finally {
+    smtpBusy.value = false
+  }
+}
+
+async function testSmtp() {
+  const to = smtpTestTo.value.trim()
+  if (!to || !canTestSmtp.value) return
+  smtpMsg.value = ''
+  smtpErr.value = false
+  // 先保存当前表单，避免测到旧库配置
+  const saved = await saveSmtp({ quiet: true })
+  if (!saved) return
+  if (!smtpForm.ready) {
+    smtpErr.value = true
+    smtpMsg.value = smtpForm.message || '配置仍未就绪，无法发送测试邮件'
+    return
+  }
+  smtpBusy.value = true
+  try {
+    await api.testSmtpConfig({ to_email: to })
+    smtpMsg.value = `测试邮件已发出，请到 ${to} 查收收件箱（含垃圾箱）`
+  } catch (e) {
+    smtpErr.value = true
+    smtpMsg.value = e.message || '测试失败'
+  } finally {
+    smtpBusy.value = false
+  }
+}
+
 async function saveRag() {
   ragBusy.value = true
   ragMsg.value = ''
@@ -545,13 +796,30 @@ async function saveRag() {
 
 async function loadCrawlers() {
   crawlerMsg.value = ''
+  crawlerErr.value = false
+  crawlerLoading.value = true
+  crawlerSavedKey.value = ''
   try {
-    crawlerRows.value = await api.adminCrawlers()
+    const data = await api.adminCrawlers()
+    crawlerRows.value = Array.isArray(data) ? data : []
+    rememberCrawlerSnapshot(crawlerRows.value)
     loaded.crawlers = true
   } catch (e) {
     crawlerErr.value = true
     crawlerMsg.value = e.message || '加载失败'
+    crawlerRows.value = []
+    crawlerSnapshot.value = {}
+  } finally {
+    crawlerLoading.value = false
   }
+}
+
+function ensureTabLoaded(tab) {
+  if (tab === 'models' && !loaded.models) load()
+  if (tab === 'rag' && !loaded.rag) loadRag()
+  if (tab === 'mail' && !loaded.mail) loadSmtp()
+  if (tab === 'crawlers' && !loaded.crawlers) loadCrawlers()
+  if (tab === 'keywords' && !loaded.keywords) loadKeywords(1)
 }
 
 async function saveCrawler(row) {
@@ -566,7 +834,16 @@ async function saveCrawler(row) {
       fetch_details: row.fetch_details,
     })
     Object.assign(row, data)
-    crawlerMsg.value = `已保存 ${row.name}`
+    crawlerSnapshot.value = {
+      ...crawlerSnapshot.value,
+      [row.crawler_key]: crawlerSnapKey(row),
+    }
+    crawlerMsg.value = `已保存「${row.name}」；下一轮采集生效`
+    crawlerSavedKey.value = row.crawler_key
+    if (crawlerSavedTimer) clearTimeout(crawlerSavedTimer)
+    crawlerSavedTimer = setTimeout(() => {
+      if (crawlerSavedKey.value === row.crawler_key) crawlerSavedKey.value = ''
+    }, 1800)
   } catch (e) {
     crawlerErr.value = true
     crawlerMsg.value = e.message || '保存失败'
@@ -686,13 +963,24 @@ async function reimportKeywords() {
 }
 
 watch(activeTab, (tab) => {
-  if (tab === 'models' && !loaded.models) load()
-  if (tab === 'rag' && !loaded.rag) loadRag()
-  if (tab === 'crawlers' && !loaded.crawlers) loadCrawlers()
-  if (tab === 'keywords' && !loaded.keywords) loadKeywords(1)
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } })
+  }
+  ensureTabLoaded(tab)
 })
 
-onMounted(load)
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (typeof tab === 'string' && tabIds.has(tab) && activeTab.value !== tab) {
+      activeTab.value = tab
+    }
+  },
+)
+
+onMounted(() => {
+  ensureTabLoaded(activeTab.value)
+})
 </script>
 
 <style scoped>
@@ -796,11 +1084,177 @@ onMounted(load)
 }
 .tab.on { background: var(--ink, #1c1916); color: #f7f3eb; border-color: transparent; }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 16px 0; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.field label {
+  font-size: var(--fs-xs);
+  color: var(--ink-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.mail-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  font-size: var(--fs-sm);
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  margin: 12px 0 4px;
+}
+.mail-status strong { font-weight: 700; }
+.mail-status.ok {
+  color: var(--moss);
+  background: color-mix(in srgb, var(--lime) 22%, transparent);
+}
+.mail-status.bad {
+  color: var(--clay);
+  background: color-mix(in srgb, var(--clay) 10%, var(--paper));
+}
+.smtp-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  margin: 16px 0 12px;
+  align-items: stretch;
+}
+.smtp-fields > .field {
+  /* 同行两列等高，说明区撑开，输入框底对齐 */
+  height: 100%;
+}
+.smtp-fields > .field .field-help {
+  flex: 1 1 auto;
+  min-height: 2.9em;
+}
+.smtp-fields .smtp-from { grid-column: 1 / -1; }
+.smtp-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0 0 14px;
+}
+.field-help {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-mute);
+  line-height: 1.45;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  /* 预留约两行，避免与邻列说明长短差导致输入框错位 */
+  min-height: 2.9em;
+}
+.field-help code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  background: var(--wash);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.smtp-actions-block {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--rule, #d8d2c8);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.smtp-actions { margin: 0; }
+.smtp-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.smtp-test-input { flex: 1 1 240px; min-width: 0; }
+.smtp-test-row button { flex: none; }
+.smtp-test-hint { margin: 0; color: var(--ink-mute); }
+.compact-empty { margin-top: 12px; padding: 20px; }
+@media (max-width: 700px) {
+  .smtp-fields { grid-template-columns: 1fr; }
+  .smtp-fields .smtp-from { grid-column: auto; }
+}
 .hint { margin: 0 0 12px; }
+.crawler-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--lime) 18%, transparent);
+  color: var(--pine);
+  font-size: var(--fs-sm);
+}
+.crawler-status.warn {
+  background: color-mix(in srgb, var(--brass, #9a6b2f) 12%, var(--paper));
+  color: var(--ink);
+}
+.crawler-status .dirty-tag {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--clay);
+}
 .cfg-table { width: 100%; border-collapse: collapse; }
 .cfg-table th, .cfg-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line, #e6e0d6); vertical-align: middle; }
 .cfg-table .num { width: 72px; }
 .cfg-table .wide { width: 100%; min-width: 140px; }
+.col-hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  letter-spacing: 0;
+  text-transform: none;
+  margin-top: 2px;
+}
+.crawler-table tbody tr.is-off {
+  opacity: 0.62;
+  box-shadow: inset 3px 0 0 var(--ink-mute);
+}
+.crawler-table tbody tr.is-dirty {
+  background: color-mix(in srgb, var(--brass, #9a6b2f) 8%, transparent);
+}
+.enable-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: var(--fs-xs);
+}
+.enable-cell .on { color: var(--moss); font-weight: 650; }
+.enable-cell .off { color: var(--ink-mute); }
+.crawler-save-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dirty-dot {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--clay);
+}
 .actions { white-space: nowrap; display: flex; gap: 8px; }
 .kw-toolbar, .kw-new, .kw-pager { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
 .kw-toolbar .search { flex: 1; min-width: 160px; }

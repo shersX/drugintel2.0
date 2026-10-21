@@ -12,7 +12,7 @@ from jinja2 import Template
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.src.core.config import SmtpEnvConfig
+from backend.src.alerts.smtp_settings import is_smtp_ready, load_smtp_settings
 from backend.src.core.logger import get_logger
 from backend.src.models.entities import Watchlist
 from backend.src.models.news import News
@@ -95,22 +95,32 @@ def render_alert_email(news: News, watchlist: Watchlist) -> str:
 
 
 def send_email(*, to_addr: str, subject: str, html_body: str) -> bool:
-    cfg = SmtpEnvConfig.load()
-    if not cfg.host or not to_addr:
-        logger.warning("SMTP 未配置或收件人为空，跳过发送 subject=%s", subject)
+    cfg = load_smtp_settings()
+    if not is_smtp_ready(cfg) or not to_addr:
+        logger.warning("SMTP 未就绪或收件人为空，跳过发送 subject=%s", subject)
         return False
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = cfg.from_addr or cfg.user
+    msg["From"] = cfg.from_addr or cfg.user or cfg.host
     msg["To"] = to_addr
     msg.attach(MIMEText(html_body, "html", "utf-8"))
+    # 465：隐式 SSL（SMTP_SSL）；587：明文连接后再 STARTTLS
+    use_ssl = int(cfg.port) == 465
     try:
-        with smtplib.SMTP(cfg.host, cfg.port, timeout=30) as server:
-            if cfg.use_tls:
-                server.starttls()
-            if cfg.user:
-                server.login(cfg.user, cfg.password)
-            server.sendmail(msg["From"], [to_addr], msg.as_string())
+        if use_ssl:
+            with smtplib.SMTP_SSL(cfg.host, cfg.port, timeout=30) as server:
+                if cfg.user:
+                    server.login(cfg.user, cfg.password)
+                server.sendmail(msg["From"], [to_addr], msg.as_string())
+        else:
+            with smtplib.SMTP(cfg.host, cfg.port, timeout=30) as server:
+                if cfg.use_tls:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                if cfg.user:
+                    server.login(cfg.user, cfg.password)
+                server.sendmail(msg["From"], [to_addr], msg.as_string())
         logger.info("邮件已发送 to=%s subject=%s", to_addr, subject)
         return True
     except Exception as e:

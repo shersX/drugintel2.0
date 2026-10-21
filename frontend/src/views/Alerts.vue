@@ -6,6 +6,19 @@
       <p class="ed-lede">关注药物、公司或关键词，新情报入库后自动邮件推送。</p>
     </header>
 
+    <div v-if="mailStatus && !mailStatus.ready" class="mail-banner reveal" role="status">
+      <div>
+        <strong>邮件通道未就绪</strong>
+        <p>{{ mailStatus.message || '命中订阅后暂时无法发送邮件通知。' }}</p>
+      </div>
+      <router-link
+        v-if="isAdmin"
+        class="banner-link"
+        to="/settings?tab=mail"
+      >去配置邮件服务</router-link>
+      <span v-else class="meta">请联系管理员配置 SMTP</span>
+    </div>
+
     <!-- 新建订阅 -->
     <section class="card reveal">
       <div class="sec-mark"><span class="no">01</span><h3>新增订阅</h3><span class="rule"></span></div>
@@ -30,6 +43,9 @@
         <div class="field grow">
           <label for="wl-mail">通知邮箱（可选）</label>
           <input id="wl-mail" v-model="form.email" type="email" placeholder="you@example.com" />
+          <small v-if="mailStatus && !mailStatus.ready && form.email" class="field-warn">
+            已填写邮箱，但邮件通道未就绪，暂时不会发信
+          </small>
         </div>
         <button type="submit" :disabled="loading || !form.entity_name.trim()">添加订阅</button>
       </form>
@@ -81,11 +97,13 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
+import { session } from '../session'
 
 const items = ref([])
+const mailStatus = ref(null)
 const { loading, error, run } = useAsync()
 const form = reactive({
   entity_type: 'keyword',
@@ -94,6 +112,8 @@ const form = reactive({
   enabled: true,
 })
 
+const isAdmin = computed(() => session.user?.role === 'admin')
+
 const types = [
   { value: 'keyword', label: '关键词' },
   { value: 'drug', label: '药物' },
@@ -101,6 +121,17 @@ const types = [
 ]
 const typeLabel = (v) => types.find((t) => t.value === v)?.label || v
 const typeClass = (v) => (v === 'drug' ? 'ok' : v === 'company' ? 'warn' : '')
+
+async function loadMailStatus() {
+  try {
+    mailStatus.value = await api.mailStatus()
+  } catch {
+    mailStatus.value = {
+      ready: false,
+      message: '无法确认邮件通道状态，命中后可能无法发信',
+    }
+  }
+}
 
 async function load() {
   const data = await run(() => api.watchlist())
@@ -117,10 +148,39 @@ async function remove(id) {
   await run(() => api.deleteWatchlist(id))
   items.value = items.value.filter((w) => w.id !== id)
 }
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([load(), loadMailStatus()])
+})
 </script>
 
 <style scoped>
+.mail-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 0 0 24px;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--clay) 35%, var(--rule));
+  background: color-mix(in srgb, var(--clay) 8%, var(--surface));
+  color: var(--ink);
+}
+.mail-banner strong { display: block; margin-bottom: 4px; color: var(--clay); }
+.mail-banner p { margin: 0; font-size: var(--fs-sm); color: var(--ink-soft); }
+.banner-link {
+  flex: none;
+  font-weight: 650;
+  color: var(--pine);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.field-warn {
+  color: var(--clay);
+  font-size: var(--fs-xs);
+}
+
 .sub-form {
   display: flex;
   flex-wrap: wrap;

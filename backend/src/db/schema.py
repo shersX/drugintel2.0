@@ -55,6 +55,7 @@ def ensure_schema() -> None:
         logger.warning("%s（表为空时部分环境可稍后重试）", exc)
     _seed_crawl_config()
     _seed_rag_and_crawler_settings()
+    _seed_smtp_config()
     _seed_filter_keywords()
     from backend.src.auth.service import bind_watchlist_owners, ensure_first_admin
 
@@ -349,6 +350,16 @@ def _seed_rag_and_crawler_settings() -> None:
             seed_crawler_settings(session)
     except Exception as exc:
         logger.warning("初始化 rag/crawler 配置跳过: %s", exc)
+
+
+def _seed_smtp_config() -> None:
+    try:
+        with session_scope() as session:
+            from backend.src.alerts.smtp_settings import get_or_create_smtp_config
+
+            get_or_create_smtp_config(session)
+    except Exception as exc:
+        logger.warning("初始化 smtp_config 跳过: %s", exc)
 
 
 def _seed_filter_keywords() -> None:
