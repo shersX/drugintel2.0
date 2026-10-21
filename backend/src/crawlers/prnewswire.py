@@ -1,5 +1,7 @@
 import logging
+import re
 
+from bs4 import BeautifulSoup
 from scrapling.fetchers import FetcherSession
 from scrapling.spiders import Request, Response, Spider
 
@@ -7,10 +9,24 @@ from backend.src.crawlers.scrapling_support import (
     JsonSeen,
     canonicalize,
     et_to_beijing,
-    fragment_html,
     html_to_text,
     quiet_item_logs,
+    sanitize_html,
+    seen_for_crawler,
     text,
+)
+
+# release-body 末尾的 Amplify / Newsletter 推广块
+_PROMO_SELECTORS = (
+    "a.fullClick",
+    ".prnNewsLetterWidgetSection",
+    ".prnNewsletterWidget-container",
+    "a[href*='amplify-platform']",
+    "a[href*='site_refer=press-release-widget']",
+)
+_PROMO_TEXT_RE = re.compile(
+    r"^\s*(?:\d+\s*%|more press release views with|Request a Demo)\s*$",
+    re.I,
 )
 
 SEEN_FILE = "Prnewswire_url.json"
@@ -46,7 +62,7 @@ class PrNewswireSpider(Spider):
         self.fetch_details = fetch_details
         self.concurrent_requests = max(1, concurrency)
         self.user_agent = user_agent
-        self.seen = seen or JsonSeen(SEEN_FILE)
+        self.seen = seen or seen_for_crawler("prnewswire")
         super().__init__(**kwargs)
 
     def configure_sessions(self, manager) -> None:
@@ -60,6 +76,7 @@ class PrNewswireSpider(Spider):
     async def parse(self, response: Response):
         page = int(response.meta.get("page", 1))
         new_count = 0
+        skip_count = 0
         for card in response.css("div.row.newsCards"):
             title = " ".join(
                 " ".join(str(part).split())
@@ -73,7 +90,7 @@ class PrNewswireSpider(Spider):
             if not href:
                 continue
             if href in self.seen:
-                self.logger.debug("已跳过 原因=已抓取过 地址=%s", href)
+                skip_count += 1
                 continue
             new_count += 1
             if not self.fetch_details:
@@ -85,6 +102,13 @@ class PrNewswireSpider(Spider):
                 sid="http",
                 meta={"title": title, "seen_url": href},
             )
+        if skip_count:
+            self.logger.info(
+                "列表页增量跳过 page=%s 已见=%s 待抓详情=%s",
+                page,
+                skip_count,
+                new_count,
+            )
         if new_count and page < self.pages:
             yield response.follow(
                 list_url(page + 1),
@@ -94,8 +118,7 @@ class PrNewswireSpider(Spider):
             )
 
     async def parse_detail(self, response: Response):
-        body = response.css("section.release-body")
-        content_html = fragment_html(body) if body else ""
+        content_html = self._release_body_html(response)
         # 有效稿：raw 落库成功后再 mark_seen_urls
         yield self._item(
             text(response.css("h1")) or response.meta.get("title", ""),
@@ -105,6 +128,15 @@ class PrNewswireSpider(Spider):
             html_to_text(content_html),
             content_html,
         )
+
+    @staticmethod
+    def _release_body_html(response: Response) -> str:
+        nodes = list(response.css("section.release-body") or [])
+        if not nodes:
+            return ""
+        node = nodes[0]
+        raw = getattr(node, "html_content", None) or str(node)
+        return sanitize_html(_strip_prnewswire_promo(raw))
 
     @staticmethod
     def _item(
@@ -124,3 +156,20 @@ class PrNewswireSpider(Spider):
             "content_html": content_html or None,
             "crawler": "prnewswire",
         }
+
+
+def _strip_prnewswire_promo(html: str) -> str:
+    """去掉 release-body 内 Amplify「21% / Request a Demo」推广。"""
+    raw = (html or "").strip()
+    if not raw:
+        return ""
+    soup = BeautifulSoup(raw, "html.parser")
+    for sel in _PROMO_SELECTORS:
+        for node in soup.select(sel):
+            node.decompose()
+    for tag in list(soup.find_all(["p", "div", "span", "a", "h2", "h3"])):
+        if tag.parent is None:
+            continue
+        if _PROMO_TEXT_RE.match(tag.get_text(" ", strip=True) or ""):
+            tag.decompose()
+    return "".join(str(child) for child in soup.contents).strip()

@@ -3,15 +3,18 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from backend.src.core.logger import get_logger
+
 ET = ZoneInfo("America/New_York")
 CN = ZoneInfo("Asia/Shanghai")
 OUT_DIR = Path(__file__).resolve().parents[3] / "outjson"
+_logger = get_logger("crawler.seen")
 
 _ALLOWED_TAGS = frozenset(
     {
@@ -231,7 +234,7 @@ CRAWLER_SEEN_FILES = {
 class JsonSeen:
     """已见详情链接。读入旧的 JSON 列表；新增应在 raw 落库成功后调用 add。"""
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, *, seed_urls: Optional[set[str]] = None):
         self.path = OUT_DIR / filename
         self._urls: set[str] = set()
         if self.path.exists():
@@ -241,9 +244,14 @@ class JsonSeen:
                 data = []
             if isinstance(data, list):
                 self._urls = {canonicalize(str(item)) for item in data if item}
+        if seed_urls:
+            self._urls.update(canonicalize(u) for u in seed_urls if u)
 
     def __contains__(self, url: str) -> bool:
         return canonicalize(url) in self._urls
+
+    def __len__(self) -> int:
+        return len(self._urls)
 
     def add(self, url: str) -> None:
         url = canonicalize(url)
@@ -271,6 +279,41 @@ class JsonSeen:
                 encoding="utf-8",
             )
         return n
+
+
+def _db_seen_urls(crawler_key: str) -> set[str]:
+    """从 news 表加载该爬虫已入库的 detail_url（容器重建后 JSON 丢失时的兜底）。"""
+    try:
+        from sqlalchemy import select
+
+        from backend.src.db.session import session_scope
+        from backend.src.models.news import News
+
+        with session_scope() as session:
+            rows = session.scalars(
+                select(News.detail_url).where(News.crawler == crawler_key)
+            ).all()
+        return {canonicalize(str(u)) for u in rows if u}
+    except Exception as exc:
+        _logger.warning("从库加载已见 URL 失败 crawler=%s: %s", crawler_key, exc)
+        return set()
+
+
+def seen_for_crawler(crawler_key: str) -> JsonSeen:
+    """JSON 文件 + 库内 detail_url 合并，供列表页跟详情前跳过。"""
+    key = (crawler_key or "").strip().lower()
+    filename = CRAWLER_SEEN_FILES.get(key)
+    if not filename:
+        return JsonSeen(f"{key or 'unknown'}_url.json")
+    db_urls = _db_seen_urls(key)
+    seen = JsonSeen(filename, seed_urls=db_urls)
+    _logger.info(
+        "增量已见 crawler=%s file+db=%s (db=%s)",
+        key,
+        len(seen),
+        len(db_urls),
+    )
+    return seen
 
 
 def mark_seen_urls(crawler_key: str, urls: list[str] | set[str]) -> int:

@@ -10,6 +10,7 @@ from backend.src.crawlers.scrapling_support import (
     fragment_html,
     html_to_text,
     quiet_item_logs,
+    seen_for_crawler,
     text,
 )
 
@@ -40,7 +41,7 @@ class GlobeNewswireSpider(Spider):
         self.fetch_details = fetch_details
         self.concurrent_requests = max(1, concurrency)
         self.user_agent = user_agent
-        self.seen = seen or JsonSeen(SEEN_FILE)
+        self.seen = seen or seen_for_crawler("globenewswire")
         super().__init__(**kwargs)
 
     def configure_sessions(self, manager) -> None:
@@ -54,6 +55,7 @@ class GlobeNewswireSpider(Spider):
     async def parse(self, response: Response):
         page = int(response.meta.get("page", 1))
         new_count = 0
+        skip_count = 0
         for card in response.css("li.row"):
             title = text(card.css("div.mainLink a"))
             source = text(card.css("a.sourceLink"))
@@ -64,7 +66,7 @@ class GlobeNewswireSpider(Spider):
             if not href:
                 continue
             if href in self.seen:
-                self.logger.debug("已跳过 原因=已抓取过 地址=%s", href)
+                skip_count += 1
                 continue
             new_count += 1
             if not self.fetch_details:
@@ -75,6 +77,13 @@ class GlobeNewswireSpider(Spider):
                 callback=self.parse_detail,
                 sid="http",
                 meta={"title": title, "source": source, "seen_url": href},
+            )
+        if skip_count:
+            self.logger.info(
+                "列表页增量跳过 page=%s 已见=%s 待抓详情=%s",
+                page,
+                skip_count,
+                new_count,
             )
         if new_count and page < self.pages:
             yield response.follow(
