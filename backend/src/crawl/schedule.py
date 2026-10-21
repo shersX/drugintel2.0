@@ -129,15 +129,33 @@ def _validate(mode: str, daily_time: Optional[str], crawler_keys: List[str]) -> 
         if not daily_time:
             raise CrawlConfigError("每天采集需要选择时刻")
         parse_daily_time(daily_time)
+    # 与监控页可选列表一致：去掉未知或已禁用源，避免进度分母含「看不见」的源
+    try:
+        from backend.src.crawlers.settings_store import list_crawler_settings
+
+        with session_scope() as session:
+            enabled = {
+                item["crawler_key"]
+                for item in list_crawler_settings(session)
+                if item.get("enabled", True)
+            }
+    except Exception:
+        enabled = {
+            key
+            for key, meta in CRAWLER_REGISTRY.items()
+            if meta.get("enabled", True)
+        }
     keys: List[str] = []
     for key in crawler_keys or []:
         name = str(key).strip()
         if name not in CRAWLER_REGISTRY:
             raise CrawlConfigError(f"未知爬虫：{name}")
+        if name not in enabled:
+            continue
         if name not in keys:
             keys.append(name)
     if not keys:
-        raise CrawlConfigError("至少选择一个爬虫")
+        raise CrawlConfigError("至少选择一个已启用的爬虫")
     return keys
 
 
@@ -489,7 +507,11 @@ async def _execute(
     from backend.src.processors.pipeline import run_processing_pipeline
 
     merged = merged_crawler_registry()
-    configs = {key: merged[key] for key in keys if key in merged}
+    configs = {
+        key: merged[key]
+        for key in keys
+        if key in merged and merged[key].get("enabled", True)
+    }
     if not configs:
         return {"status": "failed", "error": "没有可运行的爬虫"}
 

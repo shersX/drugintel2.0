@@ -95,26 +95,39 @@ def sanitize_html(html: str) -> str:
     if not raw:
         return ""
     soup = BeautifulSoup(raw, "html.parser")
+    # 先删危险标签（含子树），再自深向浅 unwrap，避免「节点已不在树中」
     for tag in list(soup.find_all(True)):
-        name = (tag.name or "").lower()
-        if name in _DROP_TAGS:
+        if tag.parent is None:
+            continue
+        if (tag.name or "").lower() in _DROP_TAGS:
             tag.decompose()
+    for tag in reversed(list(soup.find_all(True))):
+        if tag.parent is None:
             continue
-        if name not in _ALLOWED_TAGS:
+        name = (tag.name or "").lower()
+        if name in _ALLOWED_TAGS:
+            attrs = dict(tag.attrs)
+            tag.attrs = {}
+            if name == "a":
+                href = str(attrs.get("href") or "").strip()
+                if href.lower().startswith(("http://", "https://")):
+                    tag["href"] = href
+                    tag["rel"] = "noopener noreferrer"
+                    tag["target"] = "_blank"
+                else:
+                    try:
+                        tag.unwrap()
+                    except ValueError:
+                        pass
+            continue
+        try:
             tag.unwrap()
-            continue
-        attrs = dict(tag.attrs)
-        tag.attrs = {}
-        if name == "a":
-            href = str(attrs.get("href") or "").strip()
-            if href.lower().startswith(("http://", "https://")):
-                tag["href"] = href
-                tag["rel"] = "noopener noreferrer"
-                tag["target"] = "_blank"
-            else:
-                tag.unwrap()
+        except ValueError:
+            pass
     # 去掉空块
     for tag in list(soup.find_all(["p", "li", "h2", "h3", "h4"])):
+        if tag.parent is None:
+            continue
         if not tag.get_text(strip=True) and not tag.find(["img", "br", "table"]):
             tag.decompose()
     return "".join(str(child) for child in soup.contents).strip()

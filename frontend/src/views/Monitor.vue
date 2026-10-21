@@ -81,18 +81,37 @@
           </details>
         </div>
 
-        <div class="field">
-          <label>爬虫</label>
-          <div class="seg">
+        <div class="source-picker">
+          <div class="source-picker-head">
+            <div>
+              <div class="source-picker-title">本轮采集来源</div>
+              <p class="meta source-picker-hint">
+                {{ locked ? '采集运行中，来源不可改。' : '点击切换；启动后将只跑勾选的来源。' }}
+              </p>
+            </div>
+            <span class="source-count" :class="{ warn: !selectedCount }">已选 {{ selectedCount }} / {{ sourceTotal }}</span>
+          </div>
+          <div v-if="!locked" class="source-actions">
+            <button type="button" class="ghost" :disabled="!sourceTotal || selectedCount === sourceTotal" @click="selectAllSources">全选</button>
+            <button type="button" class="ghost" :disabled="!selectedCount" @click="clearSources">清空</button>
+          </div>
+          <div class="source-grid" role="group" aria-label="本轮采集来源">
             <button
               type="button"
               v-for="src in sources"
               :key="src.key"
-              class="seg-btn"
+              class="source-card"
               :class="{ on: selected.includes(src.key) }"
               :disabled="locked"
+              :aria-pressed="selected.includes(src.key)"
               @click="toggleSource(src.key)"
-            >{{ src.label }}</button>
+            >
+              <span class="source-check" aria-hidden="true">{{ selected.includes(src.key) ? '✓' : '' }}</span>
+              <span class="source-text">
+                <strong>{{ src.label }}</strong>
+                <span class="meta mono">{{ src.key }}</span>
+              </span>
+            </button>
           </div>
         </div>
 
@@ -288,6 +307,8 @@ const sources = computed(() => {
   if (rows?.length) return rows.map((row) => ({ key: row.key, label: row.name }))
   return crawlerSources.value
 })
+const sourceTotal = computed(() => sources.value.length)
+const selectedCount = computed(() => selected.value.filter((key) => sources.value.some((s) => s.key === key)).length)
 const crawlerLogs = computed(() => crawl.value?.crawlers || [])
 
 const healthRows = computed(() => {
@@ -346,14 +367,29 @@ function applyConfig(cfg) {
   if (!cfg) return
   scheduleMode.value = cfg.schedule_mode || 'hourly'
   dailyTime.value = cfg.daily_time || '08:00'
-  if (cfg.crawler_keys?.length) selected.value = [...cfg.crawler_keys]
-  else if (!cfg.running) selected.value = sources.value.map((item) => item.key)
+  const availableKeys = new Set(sources.value.map((item) => item.key))
+  if (cfg.crawler_keys?.length) {
+    // 只保留当前可选（已启用）源，避免进度分母含已禁用但仍写在配置里的 key
+    selected.value = cfg.crawler_keys.filter((key) => availableKeys.has(key))
+  } else if (!cfg.running) {
+    selected.value = sources.value.map((item) => item.key)
+  }
 }
 
 function toggleSource(key) {
   if (locked.value) return
   if (selected.value.includes(key)) selected.value = selected.value.filter((item) => item !== key)
   else selected.value = [...selected.value, key]
+}
+
+function selectAllSources() {
+  if (locked.value) return
+  selected.value = sources.value.map((item) => item.key)
+}
+
+function clearSources() {
+  if (locked.value) return
+  selected.value = []
 }
 
 async function refreshQuiet() {
@@ -401,10 +437,11 @@ async function startCrawl() {
   }
   actionLoading.value = true
   try {
+    const availableKeys = new Set(sources.value.map((item) => item.key))
     const status = await api.crawlStart({
       schedule_mode: scheduleMode.value,
       daily_time: scheduleMode.value === 'daily' ? dailyTime.value : null,
-      crawler_keys: selected.value,
+      crawler_keys: selected.value.filter((key) => availableKeys.has(key)),
     })
     crawl.value = status
     applyConfig(status)
@@ -574,6 +611,110 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   padding: 8px 14px;
 }
 .seg-btn.on { background: var(--pine); color: var(--paper); }
+.source-picker {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  background: var(--wash);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.source-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.source-picker-title {
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  color: var(--pine);
+  font-weight: 700;
+}
+.source-picker-hint { margin: 4px 0 0; }
+.source-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--pine);
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--pine) 10%, transparent);
+}
+.source-count.warn {
+  color: var(--clay);
+  background: color-mix(in srgb, var(--clay) 10%, transparent);
+}
+.source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.source-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
+}
+.source-card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--pine) 45%, var(--line));
+  box-shadow: none;
+}
+.source-card.on {
+  border-color: var(--pine);
+  background: color-mix(in srgb, var(--pine) 8%, var(--paper));
+}
+.source-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.source-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--paper);
+  background: transparent;
+}
+.source-card.on .source-check {
+  border-color: var(--pine);
+  background: var(--pine);
+}
+.source-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.source-text strong {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+.source-card.on .source-text strong { color: var(--pine); }
 .hint { margin: 0 0 16px; }
 .form-error { color: var(--clay); margin: 8px 0; }
 .run-error { margin: 0 0 16px; }
