@@ -164,13 +164,13 @@ def main() -> None:
 
     backend = _popen(backend_cmd, ROOT, env)
     frontend = _popen(
-        [_npm(), "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"],
+        [_npm(), "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"],
         FRONTEND,
         env,
     )
     procs = [backend, frontend]
-    print("前端  http://127.0.0.1:5173")
-    print("接口  http://127.0.0.1:8000")
+    print("前端  http://0.0.0.0:5173")
+    print("接口  http://0.0.0.0:8000")
     print("按 Ctrl+C 停止前后端。数据库和 Redis 容器会继续运行。")
     try:
         while True:

@@ -28,17 +28,14 @@
       </label>
       <label class="wide">
         对话模型
-        <select
+        <UiSelect
           v-if="modelLists.chat.length"
           v-model="local.chat_model"
-          required
-        >
-          <option disabled value="">请选择模型</option>
-          <option v-for="id in modelLists.chat" :key="id" :value="id">{{ id }}</option>
-          <option v-if="local.chat_model && !modelLists.chat.includes(local.chat_model)" :value="local.chat_model">
-            {{ local.chat_model }}（当前）
-          </option>
-        </select>
+          :options="modelOptions(modelLists.chat, local.chat_model)"
+          :allow-empty="false"
+          size="md"
+          placeholder="请选择模型"
+        />
         <input
           v-else
           v-model="local.chat_model"
@@ -85,17 +82,14 @@
       </label>
       <label class="wide">
         嵌入模型
-        <select
+        <UiSelect
           v-if="modelLists.embedding.length"
           v-model="local.embedding_model"
-          required
-        >
-          <option disabled value="">请选择模型</option>
-          <option v-for="id in modelLists.embedding" :key="id" :value="id">{{ id }}</option>
-          <option v-if="local.embedding_model && !modelLists.embedding.includes(local.embedding_model)" :value="local.embedding_model">
-            {{ local.embedding_model }}（当前）
-          </option>
-        </select>
+          :options="modelOptions(modelLists.embedding, local.embedding_model)"
+          :allow-empty="false"
+          size="md"
+          placeholder="请选择模型"
+        />
         <input
           v-else
           v-model="local.embedding_model"
@@ -137,17 +131,14 @@
       </label>
       <label class="wide">
         重排模型
-        <select
+        <UiSelect
           v-if="modelLists.rerank.length"
           v-model="local.reranker_model"
-          required
-        >
-          <option disabled value="">请选择模型</option>
-          <option v-for="id in modelLists.rerank" :key="id" :value="id">{{ id }}</option>
-          <option v-if="local.reranker_model && !modelLists.rerank.includes(local.reranker_model)" :value="local.reranker_model">
-            {{ local.reranker_model }}（当前）
-          </option>
-        </select>
+          :options="modelOptions(modelLists.rerank, local.reranker_model)"
+          :allow-empty="false"
+          size="md"
+          placeholder="请选择模型"
+        />
         <input
           v-else
           v-model="local.reranker_model"
@@ -187,16 +178,14 @@
       </label>
       <label class="wide">
         视觉模型
-        <select
+        <UiSelect
           v-if="modelLists.vision.length"
           v-model="local.vision_model"
-        >
-          <option value="">未选择</option>
-          <option v-for="id in modelLists.vision" :key="id" :value="id">{{ id }}</option>
-          <option v-if="local.vision_model && !modelLists.vision.includes(local.vision_model)" :value="local.vision_model">
-            {{ local.vision_model }}（当前）
-          </option>
-        </select>
+          :options="modelOptions(modelLists.vision, local.vision_model)"
+          allow-empty
+          size="md"
+          placeholder="未选择"
+        />
         <input
           v-else
           v-model="local.vision_model"
@@ -224,6 +213,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { api } from '../api'
+import UiSelect from '../components/UiSelect.vue'
 
 const props = defineProps({
   model: { type: Object, required: true },
@@ -260,6 +250,14 @@ const visionKeyPlaceholder = computed(() => {
   if (props.keepVision) return '已保存，留空则不修改'
   return '可选 sk-...'
 })
+
+function modelOptions(list, current) {
+  const opts = (list || []).map((id) => ({ value: id, label: id }))
+  if (current && !(list || []).includes(current)) {
+    opts.push({ value: current, label: `${current}（当前）` })
+  }
+  return opts
+}
 
 function emptyLocal() {
   return {
@@ -442,6 +440,9 @@ async function fetchModels(slot) {
 }
 
 function submit() {
+  if (modelLists.chat.length && !local.chat_model.trim()) return
+  if (modelLists.embedding.length && !local.embedding_model.trim()) return
+  if (modelLists.rerank.length && !local.reranker_model.trim()) return
   emit('submit', payload())
 }
 </script>

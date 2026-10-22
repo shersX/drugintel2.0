@@ -139,11 +139,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from '../api'
 import { session } from '../session'
 import { useAsync } from '../composables'
 import { crawlerLabel, crawlerSources, formatDateTimeMinute, plainAbstract, setCrawlerSources } from '../format'
+
+const route = useRoute()
 
 const sources = crawlerSources
 const items = ref([])
@@ -306,8 +309,27 @@ function go(p) {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+function syncQueryKeyword() {
+  const q = typeof route.query.q === 'string' ? route.query.q.trim() : ''
+  if (q && q !== appliedKeyword.value) {
+    keyword.value = q
+    appliedKeyword.value = q
+    page.value = 1
+    return true
+  }
+  return false
+}
+
+watch(
+  () => route.query.q,
+  () => {
+    if (syncQueryKeyword()) load()
+  },
+)
+
 onMounted(() => {
   ensureSources()
+  syncQueryKeyword()
   load()
   document.addEventListener('click', onDocumentClick)
 })

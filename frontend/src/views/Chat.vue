@@ -1,28 +1,6 @@
 <template>
   <div class="chat-layout">
-    <div v-if="drawerOpen" class="drawer-mask" @click="drawerOpen = false" />
-
-    <ChatSidebar
-      :groups="groupedConversations"
-      :active-id="conversationId"
-      :drawer-open="drawerOpen"
-      :logged-in="Boolean(session.user)"
-      :busy="loading"
-      @new="startNew"
-      @select="selectConversation"
-      @rename="renameConversation"
-      @remove="removeConversation"
-      @close-drawer="drawerOpen = false"
-      @login="openLoginPrompt('/chat')"
-    />
-
-    <div class="chat-main">
-      <header class="ed-head mobile-only">
-        <button type="button" class="ghost mobile-history" @click="drawerOpen = !drawerOpen">
-          历史会话
-        </button>
-      </header>
-
+    <div class="chat-main-inner">
       <ChatThread
         ref="threadRef"
         :messages="messages"
@@ -33,21 +11,20 @@
         @suggest="onSuggest"
         @export="exportReport"
       />
-
       <ChatComposer v-model="query" :disabled="loading" @submit="send" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { openLoginPrompt } from '../authPrompt'
 import ChatComposer from '../components/chat/ChatComposer.vue'
-import ChatSidebar from '../components/chat/ChatSidebar.vue'
 import ChatThread from '../components/chat/ChatThread.vue'
 import { useChatAsk } from '../composables/useChatAsk'
+import { useChatSessions } from '../composables/useChatSessions'
 import { session } from '../session'
 
 const route = useRoute()
@@ -55,13 +32,20 @@ const router = useRouter()
 
 const query = ref('')
 const messages = ref([])
-const conversationId = ref('')
-const conversations = ref([])
 const loading = ref(false)
 const loadingStage = ref('')
 const activeSearchQuery = ref('')
-const drawerOpen = ref(false)
 const threadRef = ref(null)
+
+const {
+  conversationId,
+  asking,
+  selectTick,
+  clearTick,
+  loadList,
+  syncQuery,
+  requireLogin,
+} = useChatSessions()
 
 const { askViaWs, askViaRest } = useChatAsk({
   messages,
@@ -76,66 +60,11 @@ const suggestions = [
   '诺和诺德最近有什么事件？',
 ]
 
-const groupedConversations = computed(() => groupByTime(conversations.value))
-
-function startOfDay(d) {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-function groupByTime(items) {
-  const now = startOfDay(new Date())
-  const yesterday = new Date(now)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const week = new Date(now)
-  week.setDate(week.getDate() - 7)
-
-  const buckets = [
-    { label: '今天', items: [] },
-    { label: '昨天', items: [] },
-    { label: '近 7 天', items: [] },
-    { label: '更早', items: [] },
-  ]
-  for (const item of items) {
-    const t = startOfDay(new Date(item.updated_at || item.created_at || Date.now()))
-    if (t.getTime() === now.getTime()) buckets[0].items.push(item)
-    else if (t.getTime() === yesterday.getTime()) buckets[1].items.push(item)
-    else if (t >= week) buckets[2].items.push(item)
-    else buckets[3].items.push(item)
-  }
-  return buckets.filter((b) => b.items.length)
-}
-
-function requireLogin() {
-  if (session.user) return true
-  openLoginPrompt('/chat')
-  return false
-}
-
-function syncQuery(id) {
-  const next = { ...route.query }
-  if (id) next.c = id
-  else delete next.c
-  router.replace({ query: next })
-}
-
-async function loadList() {
-  if (!session.user) {
-    conversations.value = []
+async function loadConversationDetail(id) {
+  if (!id) {
+    messages.value = []
     return
   }
-  try {
-    conversations.value = await api.conversations()
-  } catch (e) {
-    if (e.status === 401) conversations.value = []
-    else console.warn(e)
-  }
-}
-
-async function selectConversation(id) {
-  if (loading.value || !id) return
-  drawerOpen.value = false
   try {
     const detail = await api.conversationDetail(id)
     conversationId.value = detail.id
@@ -144,49 +73,14 @@ async function selectConversation(id) {
       content: m.content,
       sources: m.sources || [],
     }))
-    syncQuery(detail.id)
   } catch (e) {
     if (e.status === 401) openLoginPrompt('/chat')
     else if (e.status === 404) {
       conversationId.value = ''
       messages.value = []
-      syncQuery('')
+      syncQuery(router, route, '')
       await loadList()
     }
-  }
-}
-
-function startNew() {
-  if (loading.value) return
-  conversationId.value = ''
-  messages.value = []
-  query.value = ''
-  drawerOpen.value = false
-  syncQuery('')
-}
-
-async function renameConversation(item) {
-  const title = window.prompt('重命名会话', item.title || '')
-  if (title == null) return
-  const cleaned = title.trim()
-  if (!cleaned) return
-  try {
-    const row = await api.renameConversation(item.id, cleaned)
-    const idx = conversations.value.findIndex((c) => c.id === item.id)
-    if (idx >= 0) conversations.value[idx] = { ...conversations.value[idx], ...row }
-  } catch (e) {
-    window.alert(e.message || '重命名失败')
-  }
-}
-
-async function removeConversation(item) {
-  if (!window.confirm(`删除会话「${item.title || '新对话'}」？`)) return
-  try {
-    await api.deleteConversation(item.id)
-    conversations.value = conversations.value.filter((c) => c.id !== item.id)
-    if (conversationId.value === item.id) startNew()
-  } catch (e) {
-    window.alert(e.message || '删除失败')
   }
 }
 
@@ -202,6 +96,7 @@ async function send() {
   messages.value.push({ role: 'user', content: q })
   query.value = ''
   loading.value = true
+  asking.value = true
   loadingStage.value = 'intent'
   activeSearchQuery.value = ''
   threadRef.value?.scrollDown?.()
@@ -210,7 +105,6 @@ async function send() {
     try {
       data = await askViaWs(q)
     } catch (wsErr) {
-      // WebSocket 不可用时回退 REST（无阶段动画）
       loadingStage.value = 'retrieve'
       data = await askViaRest(q)
       const cid = data.conversation_id || data.session_id || conversationId.value
@@ -222,14 +116,14 @@ async function send() {
         clarify: Boolean(data.clarify),
       })
       if (data.search_query) activeSearchQuery.value = data.search_query
-      syncQuery(cid)
+      syncQuery(router, route, cid)
       await loadList()
       return
     }
     const cid = data.conversation_id || conversationId.value
     if (cid) {
       conversationId.value = cid
-      syncQuery(cid)
+      syncQuery(router, route, cid)
     }
     await loadList()
   } catch (e) {
@@ -246,6 +140,7 @@ async function send() {
     })
   } finally {
     loading.value = false
+    asking.value = false
     loadingStage.value = ''
     activeSearchQuery.value = ''
     threadRef.value?.scrollDown?.()
@@ -269,18 +164,51 @@ async function exportReport(m) {
   }
 }
 
+watch(selectTick, async () => {
+  const id = conversationId.value
+  if (id) await loadConversationDetail(id)
+})
+
+watch(clearTick, () => {
+  messages.value = []
+  query.value = ''
+})
+
+watch(
+  () => route.query.c,
+  async (c) => {
+    const id = typeof c === 'string' ? c : ''
+    if (!id) {
+      conversationId.value = ''
+      messages.value = []
+      query.value = ''
+      return
+    }
+    if (id !== conversationId.value && session.user) {
+      conversationId.value = id
+      await loadConversationDetail(id)
+    }
+  },
+)
+
 onMounted(async () => {
   await loadList()
   const fromQuery = typeof route.query.c === 'string' ? route.query.c : ''
-  if (fromQuery && session.user) await selectConversation(fromQuery)
+  if (fromQuery && session.user) {
+    conversationId.value = fromQuery
+    await loadConversationDetail(fromQuery)
+  } else if (!fromQuery) {
+    messages.value = []
+  }
 })
 
 watch(
   () => session.user?.id,
   async (id) => {
     if (!id) {
-      conversations.value = []
-      startNew()
+      messages.value = []
+      conversationId.value = ''
+      await loadList()
       return
     }
     await loadList()
@@ -290,37 +218,20 @@ watch(
 
 <style scoped>
 .chat-layout {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 0 20px;
   height: calc(100dvh - 148px);
   max-height: calc(100dvh - 148px);
   min-height: 0;
-}
-.chat-main {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  min-height: 0;
+}
+.chat-main-inner {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
   height: 100%;
-}
-.ed-head {
-  flex: none;
-  margin-bottom: 12px;
-}
-.mobile-only { display: none; }
-.drawer-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: rgba(28, 36, 32, 0.35);
-}
-
-@media (max-width: 900px) {
-  .chat-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .mobile-only { display: block; }
-  .mobile-history { display: inline-flex; }
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 </style>

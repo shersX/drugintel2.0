@@ -42,9 +42,18 @@ class PipelineAsset(Base):
     )
     indication: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     therapeutic_area: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    target: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
+    modality: Mapped[str] = mapped_column(String(40), nullable=False, default="unknown", index=True)
     current_stage: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
     region: Mapped[str] = mapped_column(String(50), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    review_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="auto", index=True
+    )
+    # 人工锁定字段名列表，如 ["target","current_stage"]；crawl upsert 跳过覆盖
+    manual_fields: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -90,6 +99,8 @@ class PipelineChange(Base):
     old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     change_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="updated")
+    # crawl=抓取对账；manual=人工校对
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="crawl", index=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     snapshot_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("pipeline_page_snapshot.id", ondelete="SET NULL"), nullable=True
@@ -98,18 +109,22 @@ class PipelineChange(Base):
         Integer, ForeignKey("pipeline_page_snapshot.id", ondelete="SET NULL"), nullable=True
     )
     notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # 冗余展示字段，资产删除后仍可读
     drug_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     indication: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
 class PipelineDeal(Base):
+    """交易/合作：来自新闻溯源（非视觉抽取）。"""
+
     __tablename__ = "pipeline_deal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    company_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("companies.id"), nullable=False, index=True
+    news_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    company_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("companies.id"), nullable=True, index=True
     )
     drug_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("drugs.id"), nullable=True, index=True
@@ -117,7 +132,7 @@ class PipelineDeal(Base):
     asset_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("pipeline_asset.id", ondelete="SET NULL"), nullable=True
     )
-    deal_type: Mapped[str] = mapped_column(String(50), nullable=False, default="partner")
+    deal_type: Mapped[str] = mapped_column(String(50), nullable=False, default="collaboration")
     counterparty: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     announced_on: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)

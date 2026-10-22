@@ -57,6 +57,8 @@ from backend.src.api.schemas import (
     LlmProfileWrite,
     LoginRequest,
     PasswordReset,
+    PipelineAssetCreate,
+    PipelineAssetPatch,
     PipelineCrawlConfigUpdate,
     PipelineSyncRequest,
     ProfileUpdate,
@@ -857,15 +859,89 @@ def api_pipeline_vision_status(_actor: Actor = Depends(current_actor)):
     return ok(vision_readiness())
 
 
+@app.get("/api/pipeline/facets")
+def api_pipeline_facets(
+    status: str = "active",
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import list_facets
+
+    with session_scope() as session:
+        return ok(list_facets(session, status=status))
+
+
+@app.get("/api/pipeline/analytics/target-compare")
+def api_pipeline_target_compare(
+    target: str = "",
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import analytics_target_compare
+
+    with session_scope() as session:
+        return ok(analytics_target_compare(session, target=target))
+
+
+@app.get("/api/pipeline/analytics/competition")
+def api_pipeline_competition(
+    limit: int = Query(10, ge=1, le=50),
+    _actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import analytics_competition
+
+    with session_scope() as session:
+        return ok(analytics_competition(session, limit=limit))
+
+
+@app.get("/api/pipeline/assets/export")
+def api_pipeline_assets_export(
+    q: str = "",
+    target: str = "",
+    indication: str = "",
+    company: str = "",
+    stages: str = "",
+    stage: str = "",
+    modality: str = "",
+    status: str = "active",
+    watched_only: bool = False,
+    actor: Actor = Depends(current_actor),
+):
+    from backend.src.pipeline_intel.queries import export_assets_csv
+
+    with session_scope() as session:
+        csv_text = export_assets_csv(
+            session,
+            q=q,
+            target=target,
+            indication=indication,
+            company=company,
+            stages=stages,
+            stage=stage,
+            modality=modality,
+            status=status,
+            watched_only=watched_only,
+            user_id=actor.id,
+        )
+    return Response(
+        content="\ufeff" + csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="pipeline_assets.csv"'},
+    )
+
+
 @app.get("/api/pipeline/assets")
 def api_pipeline_assets(
     q: str = "",
-    stage: str = "",
+    target: str = "",
+    indication: str = "",
     company: str = "",
+    stages: str = "",
+    stage: str = "",
+    modality: str = "",
     status: str = "active",
+    watched_only: bool = False,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    _actor: Actor = Depends(current_actor),
+    actor: Actor = Depends(current_actor),
 ):
     from backend.src.pipeline_intel.queries import list_assets
 
@@ -874,13 +950,35 @@ def api_pipeline_assets(
             list_assets(
                 session,
                 q=q,
-                stage=stage,
+                target=target,
+                indication=indication,
                 company=company,
+                stages=stages,
+                stage=stage,
+                modality=modality,
                 status=status,
+                watched_only=watched_only,
+                user_id=actor.id,
                 page=page,
                 page_size=page_size,
             )
         )
+
+
+@app.post("/api/pipeline/assets")
+def api_pipeline_asset_create(
+    body: PipelineAssetCreate,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.pipeline_intel.queries import create_asset
+
+    with session_scope() as session:
+        try:
+            data = create_asset(session, payload=body.model_dump(), actor_id=actor.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"code": "invalid", "message": str(exc)}) from exc
+    record_audit(actor_id=actor.id, action="pipeline_asset_create", target=f"pipeline:{data.get('id')}")
+    return ok(data)
 
 
 @app.get("/api/pipeline/assets/{asset_id}")
@@ -894,16 +992,57 @@ def api_pipeline_asset_detail(asset_id: int, _actor: Actor = Depends(current_act
     return ok(data)
 
 
+@app.patch("/api/pipeline/assets/{asset_id}")
+def api_pipeline_asset_patch(
+    asset_id: int,
+    body: PipelineAssetPatch,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.pipeline_intel.queries import patch_asset
+
+    payload = body.model_dump(exclude_unset=True)
+    with session_scope() as session:
+        data = patch_asset(session, asset_id, payload=payload, actor_id=actor.id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="管线资产不存在")
+    record_audit(actor_id=actor.id, action="pipeline_asset_patch", target=f"pipeline:{asset_id}")
+    return ok(data)
+
+
+@app.delete("/api/pipeline/assets/{asset_id}")
+def api_pipeline_asset_delete(asset_id: int, actor: Actor = Depends(admin_actor)):
+    from backend.src.pipeline_intel.queries import soft_delete_asset
+
+    with session_scope() as session:
+        ok_del = soft_delete_asset(session, asset_id)
+    if not ok_del:
+        raise HTTPException(status_code=404, detail="管线资产不存在")
+    record_audit(actor_id=actor.id, action="pipeline_asset_delete", target=f"pipeline:{asset_id}")
+    return ok({"id": asset_id, "status": "inactive"})
+
+
 @app.get("/api/pipeline/changes")
 def api_pipeline_changes(
     limit: int = Query(50, ge=1, le=200),
     change_kind: str = "",
+    source: str = "",
+    asset_id: Optional[int] = None,
     _actor: Actor = Depends(current_actor),
 ):
     from backend.src.pipeline_intel.queries import list_changes
 
     with session_scope() as session:
-        return ok({"items": list_changes(session, limit=limit, change_kind=change_kind)})
+        return ok(
+            {
+                "items": list_changes(
+                    session,
+                    limit=limit,
+                    change_kind=change_kind,
+                    source=source,
+                    asset_id=asset_id,
+                )
+            }
+        )
 
 
 @app.get("/api/pipeline/deals")
@@ -915,6 +1054,16 @@ def api_pipeline_deals(
 
     with session_scope() as session:
         return ok({"items": list_deals(session, limit=limit)})
+
+
+@app.post("/api/pipeline/deals/sync")
+def api_pipeline_deals_sync(actor: Actor = Depends(admin_actor)):
+    from backend.src.pipeline_intel.news_deals import sync_deals_from_news
+
+    with session_scope() as session:
+        stats = sync_deals_from_news(session)
+    record_audit(actor_id=actor.id, action="pipeline_deals_sync", target="pipeline", detail=str(stats))
+    return ok(stats)
 
 
 @app.get("/api/pipeline/snapshots/{snapshot_id}")

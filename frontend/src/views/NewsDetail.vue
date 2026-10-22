@@ -1,6 +1,7 @@
 <template>
   <article v-if="news" class="detail" :class="{ 'has-aside': hasAside }">
-    <div class="detail-sticky">
+    <!-- 仅标题滚出视口后出现，避免吸顶条盖住正文标题 -->
+    <div v-show="showStickyTitle" class="detail-sticky">
       <router-link to="/news" class="back">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round">
@@ -14,9 +15,17 @@
     <div class="detail-layout">
       <div class="detail-main">
         <header class="reveal">
-          <div class="ed-kicker">Dispatch · {{ crawlerLabel(news.crawler) }}</div>
-          <h1 class="title">{{ news.title }}</h1>
+          <router-link to="/news" class="back page-back">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round">
+              <path d="M19 12H5M11 6l-6 6 6 6" />
+            </svg>
+            返回情报目录
+          </router-link>
+          <h1 ref="titleEl" class="title">{{ news.title }}</h1>
           <div class="byline">
+            <span class="meta">{{ crawlerLabel(news.crawler) }}</span>
+            <i class="dot"></i>
             <span class="meta">{{ news.publish_time ? formatDateTimeMinute(news.publish_time) : '时间未知' }}</span>
             <i class="dot"></i>
             <a v-if="news.detail_url" :href="news.detail_url" target="_blank" rel="noopener" class="origin-link">
@@ -96,7 +105,7 @@
 
 <script setup>
 import { marked } from 'marked'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
 import { crawlerLabel, formatDateTimeMinute } from '../format'
@@ -106,13 +115,44 @@ marked.setOptions({ breaks: true, gfm: true })
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const news = ref(null)
 const { loading, error, run } = useAsync()
-const mastOffset = ref(96)
-const mastOffsetPx = computed(() => `${mastOffset.value}px`)
-const asideTopPx = computed(() => `${mastOffset.value + 12}px`)
+/** 滚动在 .app-main 内；吸顶条用 fixed，贴在顶栏下方并对齐主栏 */
+const headerH = ref(64)
+const stickyLeft = ref(0)
+const stickyWidth = ref(0)
+const headerHPx = computed(() => `${headerH.value}px`)
+const stickyLeftPx = computed(() => `${stickyLeft.value}px`)
+const stickyWidthPx = computed(() => `${stickyWidth.value}px`)
+const asideTopPx = '12px'
+const titleEl = ref(null)
+const showStickyTitle = ref(false)
+let titleObserver = null
 
-function syncMastOffset() {
-  const mast = document.querySelector('.masthead')
-  mastOffset.value = Math.ceil(mast?.getBoundingClientRect().height || 96)
+function syncStickyGeom() {
+  const mast = document.querySelector('.app-header') || document.querySelector('.masthead')
+  headerH.value = Math.ceil(mast?.getBoundingClientRect().height || 64)
+  const main = document.querySelector('.app-main')
+  if (!main) return
+  const r = main.getBoundingClientRect()
+  const cs = getComputedStyle(main)
+  const padL = parseFloat(cs.paddingLeft) || 0
+  const padR = parseFloat(cs.paddingRight) || 0
+  stickyLeft.value = Math.round(r.left + padL)
+  stickyWidth.value = Math.max(0, Math.round(r.width - padL - padR))
+}
+
+function bindTitleObserver() {
+  titleObserver?.disconnect()
+  titleObserver = null
+  showStickyTitle.value = false
+  if (!titleEl.value) return
+  const root = document.querySelector('.app-main')
+  titleObserver = new IntersectionObserver(
+    ([entry]) => {
+      showStickyTitle.value = !entry.isIntersecting
+    },
+    { root: root || null, threshold: 0, rootMargin: '0px' },
+  )
+  titleObserver.observe(titleEl.value)
 }
 
 const matchedList = computed(() => {
@@ -143,31 +183,43 @@ const bodyHtml = computed(() => {
 async function load() {
   const data = await run(() => api.newsDetail(props.id))
   news.value = data
+  await nextTick()
+  bindTitleObserver()
 }
 onMounted(() => {
   load()
-  syncMastOffset()
-  window.addEventListener('resize', syncMastOffset)
+  syncStickyGeom()
+  window.addEventListener('resize', syncStickyGeom)
+  document.querySelector('.app-main')?.addEventListener('scroll', syncStickyGeom, { passive: true })
 })
-onUnmounted(() => window.removeEventListener('resize', syncMastOffset))
+onUnmounted(() => {
+  window.removeEventListener('resize', syncStickyGeom)
+  document.querySelector('.app-main')?.removeEventListener('scroll', syncStickyGeom)
+  titleObserver?.disconnect()
+  titleObserver = null
+})
 watch(() => props.id, load)
 </script>
 
 <style scoped>
-.detail { max-width: 1120px; position: relative; }
+.detail { width: 100%; max-width: none; position: relative; }
 
 .detail-sticky {
-  position: sticky;
-  top: v-bind(mastOffsetPx);
+  position: fixed;
+  top: v-bind(headerHPx);
+  left: v-bind(stickyLeftPx);
+  width: v-bind(stickyWidthPx);
   z-index: 20;
   display: flex;
   align-items: center;
   gap: 14px;
-  margin: -6px 0 12px;
+  margin: 0;
   padding: 10px 0;
+  box-sizing: border-box;
   background: color-mix(in srgb, var(--paper) 94%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--rule);
+  pointer-events: auto;
 }
 .sticky-title {
   flex: 1;
@@ -178,6 +230,10 @@ watch(() => props.id, load)
   font-size: var(--fs-sm);
   color: var(--ink-mute);
 }
+.page-back {
+  display: inline-flex;
+  margin-bottom: 12px;
+}
 
 .detail-layout {
   display: grid;
@@ -186,7 +242,7 @@ watch(() => props.id, load)
   align-items: start;
 }
 
-.detail-main { min-width: 0; max-width: 780px; }
+.detail-main { min-width: 0; max-width: min(96ch, 100%); }
 
 .detail-aside {
   display: flex;
@@ -231,7 +287,7 @@ watch(() => props.id, load)
 .back-fab {
   position: fixed;
   /* 右移避让全站问答 FAB（约 52px + 间距） */
-  right: max(88px, calc((100vw - 1120px) / 2 + 84px));
+  right: max(88px, calc(var(--app-pad-x) + 52px));
   bottom: 28px;
   z-index: 35;
   width: 48px;
@@ -256,7 +312,7 @@ watch(() => props.id, load)
   line-height: 1.4;
   letter-spacing: 0.005em;
   text-wrap: balance;
-  margin-top: 8px;
+  margin: 0;
 }
 
 .byline {
@@ -414,10 +470,10 @@ watch(() => props.id, load)
 
 @media (min-width: 960px) {
   .detail.has-aside .detail-layout {
-    grid-template-columns: minmax(0, 1fr) 260px;
-    gap: 36px;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 20px;
   }
-  .detail.has-aside .detail-main { max-width: none; }
+  .detail.has-aside .detail-main { max-width: min(96ch, 100%); }
   .detail-aside {
     position: sticky;
     top: v-bind(asideTopPx);

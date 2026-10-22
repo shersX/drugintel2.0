@@ -1,22 +1,5 @@
 <template>
   <div>
-    <header class="ed-head reveal">
-      <div class="ed-kicker">Admin · 系统配置</div>
-      <h1 class="ed-title">系统设置</h1>
-      <p class="ed-lede">大模型、检索、邮件、爬虫与关键词。改完即对后续请求和采集生效。</p>
-    </header>
-
-    <nav class="tabs reveal" aria-label="设置分区">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        type="button"
-        class="tab"
-        :class="{ on: activeTab === tab.id }"
-        @click="activeTab = tab.id"
-      >{{ tab.label }}</button>
-    </nav>
-
     <!-- 大模型 -->
     <div v-show="activeTab === 'models'">
       <section class="card status-strip reveal">
@@ -386,14 +369,7 @@ import ProfileForm from './ProfileForm.vue'
 const route = useRoute()
 const router = useRouter()
 
-const tabs = [
-  { id: 'models', label: '大模型' },
-  { id: 'rag', label: 'RAG 检索' },
-  { id: 'mail', label: '邮件服务' },
-  { id: 'crawlers', label: '爬虫注册表' },
-  { id: 'keywords', label: '过滤关键词' },
-]
-const tabIds = new Set(tabs.map((t) => t.id))
+const tabIds = new Set(['models', 'rag', 'mail', 'crawlers', 'keywords'])
 const activeTab = ref(tabIds.has(route.query.tab) ? String(route.query.tab) : 'models')
 
 const { loading, error, run } = useAsync()
@@ -1133,15 +1109,6 @@ onMounted(() => {
 }
 .form-error { color: var(--clay); margin: 8px 0 0; }
 .mono { font-family: var(--font-mono); }
-.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
-.tab {
-  border: 1px solid var(--line, #d8d2c8);
-  background: transparent;
-  padding: 8px 14px;
-  cursor: pointer;
-  color: var(--ink-soft);
-}
-.tab.on { background: var(--ink, #1c1916); color: #f7f3eb; border-color: transparent; }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 16px 0; }
 .field {
   display: flex;

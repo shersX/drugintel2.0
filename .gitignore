@@ -10,7 +10,6 @@ wheels/
 .venv
 
 # IDE
-.cursor
 .vscode
 
 # Output files

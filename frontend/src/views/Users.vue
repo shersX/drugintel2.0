@@ -13,10 +13,13 @@
         <label>显示名<input v-model="draft.display_name" /></label>
         <label>初始密码<input v-model="draft.password" type="password" required minlength="8" /></label>
         <label>角色
-          <select v-model="draft.role">
-            <option value="user">用户</option>
-            <option value="admin">管理员</option>
-          </select>
+          <UiSelect
+            v-model="draft.role"
+            :options="roleOptions"
+            :allow-empty="false"
+            size="md"
+            placeholder="选择角色"
+          />
         </label>
         <label>每日问答上限<input v-model.number="draft.daily_chat_limit" type="number" min="0" max="10000" /></label>
         <button type="submit" :disabled="busy">创建</button>
@@ -78,10 +81,15 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
+import UiSelect from '../components/UiSelect.vue'
 
 const items = ref([])
 const error = ref('')
 const busy = ref(false)
+const roleOptions = [
+  { value: 'user', label: '用户' },
+  { value: 'admin', label: '管理员' },
+]
 const draft = reactive({
   email: '',
   display_name: '',

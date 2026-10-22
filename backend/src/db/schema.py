@@ -44,6 +44,8 @@ def ensure_schema() -> None:
         )
     _backfill_news_process_status(engine)
     _ensure_llm_profile_columns(engine)
+    _ensure_pipeline_schema(engine)
+    _ensure_company_name_zh_column(engine)
     _ensure_crawl_config_columns(engine)
     _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
@@ -57,9 +59,11 @@ def ensure_schema() -> None:
     _seed_crawl_config()
     _seed_pipeline_crawl_config()
     _seed_simcere_company()
+    _seed_company_name_zh()
     _seed_rag_and_crawler_settings()
     _seed_smtp_config()
     _seed_filter_keywords()
+    _seed_pipeline_demo_assets()
     from backend.src.auth.service import bind_watchlist_owners, ensure_first_admin
 
     ensure_first_admin()
@@ -374,6 +378,67 @@ def _ensure_search_tsv(engine) -> None:
         logger.warning("search_tsv 回填跳过: %s", exc)
 
 
+def _ensure_pipeline_schema(engine) -> None:
+    """管线表可推倒重建：补列；旧版 pipeline_deal（无 news_id）直接 DROP 后由 create_all 重建。"""
+    from backend.src.models.pipeline import PipelineDeal
+
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.pipeline_asset')")).scalar() is not None:
+            for name, ddl in (
+                ("target", "VARCHAR(200)"),
+                ("modality", "VARCHAR(40) NOT NULL DEFAULT 'unknown'"),
+                ("review_status", "VARCHAR(20) NOT NULL DEFAULT 'auto'"),
+                ("manual_fields", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+                ("reviewed_at", "TIMESTAMPTZ"),
+                ("reviewed_by", "INTEGER"),
+            ):
+                conn.execute(
+                    text(f"ALTER TABLE pipeline_asset ADD COLUMN IF NOT EXISTS {name} {ddl}")
+                )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_pipeline_asset_target ON pipeline_asset (target)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_pipeline_asset_modality ON pipeline_asset (modality)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_pipeline_asset_review_status "
+                    "ON pipeline_asset (review_status)"
+                )
+            )
+        if conn.execute(text("SELECT to_regclass('public.pipeline_change')")).scalar() is not None:
+            conn.execute(
+                text(
+                    "ALTER TABLE pipeline_change ADD COLUMN IF NOT EXISTS "
+                    "source VARCHAR(20) NOT NULL DEFAULT 'crawl'"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_pipeline_change_source ON pipeline_change (source)"
+                )
+            )
+        deal_reg = conn.execute(text("SELECT to_regclass('public.pipeline_deal')")).scalar()
+        if deal_reg is not None:
+            has_news = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema='public' AND table_name='pipeline_deal' "
+                    "AND column_name='news_id'"
+                )
+            ).scalar()
+            if has_news is None:
+                conn.execute(text("DROP TABLE IF EXISTS pipeline_deal CASCADE"))
+                logger.info("已删除旧版 pipeline_deal（无 news_id），将重建")
+    # DROP 后补建
+    PipelineDeal.__table__.create(bind=engine, checkfirst=True)
+
+
 def _seed_crawl_config() -> None:
     with session_scope() as session:
         session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SEED_LOCK})
@@ -408,16 +473,46 @@ def _seed_pipeline_crawl_config() -> None:
             logger.info("已写入默认管线采集配置（未启动）")
 
 
+def _ensure_company_name_zh_column(engine) -> None:
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.companies')")).scalar() is None:
+            return
+        conn.execute(
+            text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS name_zh VARCHAR(200)")
+        )
+
+
 def _seed_simcere_company() -> None:
     from backend.src.models.entities import Company
 
     with session_scope() as session:
         row = session.scalar(select(Company).where(Company.name == "先声药业"))
         if row is None:
-            session.add(Company(name="先声药业", name_en="Simcere"))
+            session.add(Company(name="先声药业", name_en="Simcere", name_zh="先声药业"))
             logger.info("已写入先声药业公司种子")
-        elif not (row.name_en or "").strip():
-            row.name_en = "Simcere"
+        else:
+            if not (row.name_en or "").strip():
+                row.name_en = "Simcere"
+            if not (row.name_zh or "").strip():
+                row.name_zh = "先声药业"
+
+
+def _seed_company_name_zh() -> None:
+    try:
+        from backend.src.pipeline_intel.seed import seed_company_name_zh
+
+        seed_company_name_zh()
+    except Exception as exc:
+        logger.warning("公司中文名回填跳过: %s", exc)
+
+
+def _seed_pipeline_demo_assets() -> None:
+    try:
+        from backend.src.pipeline_intel.seed import seed_pipeline_demo_assets
+
+        seed_pipeline_demo_assets()
+    except Exception as exc:
+        logger.warning("管线展示种子跳过: %s", exc)
 
 
 def _seed_rag_and_crawler_settings() -> None:

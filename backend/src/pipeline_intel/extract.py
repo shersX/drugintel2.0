@@ -21,8 +21,10 @@ def _load_prompt() -> str:
     if _PROMPT_PATH.is_file():
         return _PROMPT_PATH.read_text(encoding="utf-8").strip()
     return (
-        "从管线示意图中抽取资产与交易，只输出 JSON："
-        '{"assets":[...],"deals":[...]}'
+        "从管线示意图中抽取研发资产，只输出 JSON 对象（不要 deals）："
+        '{"assets":[{"drug_name":"","generic_name":"","target":"","mechanism":"",'
+        '"modality":"unknown","indication":"","therapeutic_area":"","stage":"",'
+        '"region":"","partner":false}]}'
     )
 
 

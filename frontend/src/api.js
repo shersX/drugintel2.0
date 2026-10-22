@@ -110,6 +110,28 @@ export const api = {
     return request(`/api/pipeline/assets?${q}`)
   },
   pipelineAsset: (id) => request(`/api/pipeline/assets/${id}`),
+  createPipelineAsset: (body) => request('/api/pipeline/assets', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }),
+  patchPipelineAsset: (id, body) => request(`/api/pipeline/assets/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  }),
+  deletePipelineAsset: (id) => request(`/api/pipeline/assets/${id}`, { method: 'DELETE' }),
+  pipelineFacets: (status = 'active') => request(`/api/pipeline/facets?status=${encodeURIComponent(status)}`),
+  pipelineTargetCompare: (target = '') => {
+    const q = target ? `?target=${encodeURIComponent(target)}` : ''
+    return request(`/api/pipeline/analytics/target-compare${q}`)
+  },
+  pipelineCompetition: (limit = 10) => request(`/api/pipeline/analytics/competition?limit=${limit}`),
+  pipelineAssetsExportUrl: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+    })
+    return `/api/pipeline/assets/export?${q}`
+  },
   pipelineChanges: (params = {}) => {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => {
@@ -118,6 +140,7 @@ export const api = {
     return request(`/api/pipeline/changes?${q}`)
   },
   pipelineDeals: (limit = 50) => request(`/api/pipeline/deals?limit=${limit}`),
+  pipelineDealsSync: () => request('/api/pipeline/deals/sync', { method: 'POST' }),
   pipelineVisionStatus: () => request('/api/pipeline/vision-status'),
   pipelineCrawlConfig: () => request('/api/pipeline/crawl-config'),
   updatePipelineCrawlConfig: (body) => request('/api/pipeline/crawl-config', {

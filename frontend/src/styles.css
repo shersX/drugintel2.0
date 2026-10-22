@@ -27,6 +27,11 @@
   /* ---- 留白（8pt 栅格） ---- */
   --sp-1: 4px;  --sp-2: 8px;   --sp-3: 12px;  --sp-4: 16px;
   --sp-5: 24px; --sp-6: 32px;  --sp-7: 48px;  --sp-8: 64px;  --sp-9: 96px;
+  /* 全宽应用水平安全边距：1366≈16–24，桌面≈24，≥1920→32 */
+  --app-pad-x: clamp(16px, 2vw, 32px);
+  --header-h: 64px;
+  --sidebar-w: 220px;
+  --sidebar-collapsed-w: 68px;
 
   /* ---- 排版 ---- */
   --font-serif: Georgia, "Noto Serif SC", "Songti SC", "SimSun", serif;
@@ -114,6 +119,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
    刊头 Masthead + 页脚
    ============================================================ */
 .shell { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
+.shell > .app-layout { flex: 1; min-height: 0; }
 
 .masthead {
   position: sticky;
@@ -124,9 +130,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
   border-bottom: 1px solid var(--ink);
 }
 .masthead-inner {
-  max-width: 1120px;
-  margin-inline: auto;
-  padding: 12px clamp(16px, 4vw, 40px) 0;
+  width: 100%;
+  max-width: none;
+  padding: 12px var(--app-pad-x) 0;
 }
 .mast-top {
   display: flex;
@@ -188,7 +194,14 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
 .mast-link.router-link-active { color: var(--pine); }
 .mast-link.router-link-active::after { transform: scaleX(1); }
 
-.page { flex: 1; width: 100%; max-width: 1120px; margin-inline: auto; padding: clamp(14px, 2.5vw, 28px) clamp(16px, 4vw, 40px) clamp(48px, 6vw, 72px); }
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin-inline: 0;
+  padding: clamp(14px, 2.5vw, 28px) var(--app-pad-x) clamp(40px, 5vw, 64px);
+}
 
 .colophon {
   border-top: 1px solid var(--ink);
@@ -196,9 +209,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
   color: rgba(245, 242, 233, 0.85);
 }
 .colophon-inner {
-  max-width: 1120px;
-  margin-inline: auto;
-  padding: 28px clamp(16px, 4vw, 40px);
+  width: 100%;
+  max-width: none;
+  padding: 28px var(--app-pad-x);
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -412,6 +425,10 @@ button.danger-ghost:hover:not(:disabled) { background: rgba(180, 74, 50, 0.08); 
 /* ============================================================
    响应式
    ============================================================ */
+@media (min-width: 1920px) {
+  :root { --app-pad-x: 32px; }
+}
+
 @media (max-width: 900px) {
   .mast-top { flex-direction: column; gap: 4px; }
   .mast-nav { gap: 0; justify-content: space-between; overflow-x: auto; }

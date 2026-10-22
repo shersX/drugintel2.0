@@ -30,8 +30,7 @@ def _extract_has_content(snap: Optional[PipelinePageSnapshot]) -> bool:
         return False
     payload = snap.extract_json or {}
     assets = payload.get("assets") if isinstance(payload, dict) else None
-    deals = payload.get("deals") if isinstance(payload, dict) else None
-    return bool(assets) or bool(deals)
+    return bool(assets)
 
 
 def _prev_success_snapshot(
@@ -83,6 +82,7 @@ async def run_pipeline_sync(*, force: bool = False, source_url: Optional[str] = 
             crawl_simcere_pipeline,
         )
         from backend.src.pipeline_intel.extract import extract_from_images
+        from backend.src.pipeline_intel.news_deals import sync_deals_from_news
         from backend.src.pipeline_intel.notify import notify_pipeline_changes
         from backend.src.pipeline_intel.upsert import apply_extract
 
@@ -122,8 +122,9 @@ async def run_pipeline_sync(*, force: bool = False, source_url: Optional[str] = 
 
             if skip_vision:
                 snap.status = "skipped_unchanged"
+                deal_stats = sync_deals_from_news(session)
                 session.flush()
-                log("图片 hash 未变，跳过视觉抽取与入库")
+                log(f"图片 hash 未变，跳过视觉抽取；新闻交易同步 created={deal_stats.get('created', 0)}")
                 record_crawler_task(
                     crawler_name="simcere_pipeline",
                     start_time=started,
@@ -139,6 +140,7 @@ async def run_pipeline_sync(*, force: bool = False, source_url: Optional[str] = 
                     "reason": "unchanged",
                     "snapshot_id": snap_id,
                     "image_count": len(image_paths),
+                    "news_deals": deal_stats,
                 }
 
         log(f"调用视觉模型分析 {len(image_paths)} 张图")
@@ -166,11 +168,10 @@ async def run_pipeline_sync(*, force: bool = False, source_url: Optional[str] = 
             snap = session.get(PipelinePageSnapshot, snap_id)
             assert snap is not None
             assets = extracted.get("assets") or []
-            deals = extracted.get("deals") or []
-            snap.extract_json = {"assets": assets, "deals": deals}
+            snap.extract_json = {"assets": assets}
             snap.model_name = extracted.get("model_name")
             # 空结果标 extracted_empty，不参与 hash 跳过基线
-            snap.status = "extracted" if (assets or deals) else "extracted_empty"
+            snap.status = "extracted" if assets else "extracted_empty"
             session.flush()
 
             result = apply_extract(
@@ -185,12 +186,14 @@ async def run_pipeline_sync(*, force: bool = False, source_url: Optional[str] = 
             )
             if snap.company_id is None:
                 snap.company_id = result.get("company_id")
+            deal_stats = sync_deals_from_news(session)
+            result["deals"] = deal_stats.get("created", 0)
             notify_stats = notify_pipeline_changes(session, result.get("change_ids") or [])
             session.flush()
 
         log(
             f"入库完成 created={result['created']} updated={result['updated']} "
-            f"removed={result['removed']} deals={result['deals']} notify={notify_stats}"
+            f"removed={result['removed']} news_deals={result['deals']} notify={notify_stats}"
         )
         record_crawler_task(
             crawler_name="simcere_pipeline",

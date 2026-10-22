@@ -124,6 +124,38 @@ class PipelineSyncRequest(BaseModel):
     source_url: Optional[str] = None
 
 
+class PipelineAssetCreate(BaseModel):
+    company_name: str
+    company_name_en: Optional[str] = None
+    drug_name: str
+    generic_name: Optional[str] = None
+    mechanism: Optional[str] = None
+    target: Optional[str] = None
+    modality: Optional[str] = None
+    indication: Optional[str] = None
+    therapeutic_area: Optional[str] = None
+    current_stage: Optional[str] = None
+    region: Optional[str] = None
+    status: Optional[str] = "active"
+    source_url: Optional[str] = None
+
+
+class PipelineAssetPatch(BaseModel):
+    drug_name: Optional[str] = None
+    generic_name: Optional[str] = None
+    mechanism: Optional[str] = None
+    target: Optional[str] = None
+    modality: Optional[str] = None
+    indication: Optional[str] = None
+    therapeutic_area: Optional[str] = None
+    current_stage: Optional[str] = None
+    stage: Optional[str] = None
+    region: Optional[str] = None
+    status: Optional[str] = None
+    source_url: Optional[str] = None
+    mark_reviewed: bool = False
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str

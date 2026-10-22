@@ -80,8 +80,35 @@
 
           <div v-if="m.error" class="msg-error">{{ m.error }}</div>
 
-          <div v-if="m.role === 'assistant' && m.content && !loading" class="msg-actions">
-            <button type="button" class="ghost" @click="$emit('export', m)">导出报告</button>
+          <div
+            v-if="m.role === 'assistant' && m.content && !(loading && i === messages.length - 1)"
+            class="msg-actions"
+          >
+            <button
+              type="button"
+              class="act-btn"
+              :title="copiedIdx === i ? '已复制' : '复制'"
+              :aria-label="copiedIdx === i ? '已复制' : '复制'"
+              @click="copyMessage(m, i)"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="act-btn"
+              title="导出"
+              aria-label="导出"
+              @click="emit('export', m)"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -143,9 +170,26 @@ const showStageBubble = computed(() => {
   return true
 })
 
-defineEmits(['suggest', 'export'])
+const emit = defineEmits(['suggest', 'export'])
 
 const root = ref(null)
+const copiedIdx = ref(-1)
+let copiedTimer = 0
+
+async function copyMessage(m, i) {
+  const text = String(m?.content || '')
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    return
+  }
+  copiedIdx.value = i
+  window.clearTimeout(copiedTimer)
+  copiedTimer = window.setTimeout(() => {
+    if (copiedIdx.value === i) copiedIdx.value = -1
+  }, 1600)
+}
 
 function escapeAttr(value) {
   return String(value || '')
@@ -201,7 +245,7 @@ defineExpose({ scrollDown })
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-1) var(--sp-5);
   overflow-y: auto;
   min-height: 0;
@@ -239,25 +283,26 @@ defineExpose({ scrollDown })
 .bubble {
   max-width: min(72ch, 92%);
   border-radius: var(--r-lg);
-  padding: var(--sp-4) var(--sp-5);
-  line-height: 1.8;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
 }
 .msg.user .bubble {
-  background: var(--pine);
+  background: color-mix(in srgb, var(--pine) 78%, white);
   color: var(--paper);
   font-weight: 500;
   border-bottom-right-radius: var(--sp-1);
 }
 .msg.assistant .bubble {
-  background: var(--surface);
-  border: 1px solid var(--rule);
+  background: transparent;
+  border: none;
   border-bottom-left-radius: var(--sp-1);
   color: var(--ink);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 .msg.assistant .bubble.clarify {
-  border-color: color-mix(in srgb, var(--brass) 45%, var(--rule));
-  background: color-mix(in srgb, var(--brass) 8%, var(--surface));
+  border: none;
+  background: color-mix(in srgb, var(--brass) 8%, transparent);
 }
 .clarify-tag {
   display: inline-block;
@@ -269,7 +314,7 @@ defineExpose({ scrollDown })
   margin-bottom: 8px;
 }
 .answer.plain { white-space: pre-wrap; }
-.answer.md :deep(p) { margin: 0 0 0.7em; }
+.answer.md :deep(p) { margin: 0 0 0.45em; }
 .answer.md :deep(p:last-child) { margin-bottom: 0; }
 .answer.md :deep(h1),
 .answer.md :deep(h2),
@@ -278,7 +323,7 @@ defineExpose({ scrollDown })
   font-family: var(--font-serif);
   font-weight: 700;
   line-height: 1.35;
-  margin: 0.9em 0 0.4em;
+  margin: 0.65em 0 0.3em;
 }
 .answer.md :deep(h1:first-child),
 .answer.md :deep(h2:first-child),
@@ -290,10 +335,10 @@ defineExpose({ scrollDown })
 .answer.md :deep(h4) { font-size: 1.05em; }
 .answer.md :deep(ul),
 .answer.md :deep(ol) {
-  margin: 0.35em 0 0.75em;
+  margin: 0.25em 0 0.5em;
   padding-left: 1.35em;
 }
-.answer.md :deep(li) { margin: 0.25em 0; }
+.answer.md :deep(li) { margin: 0.15em 0; }
 .answer.md :deep(ul ul),
 .answer.md :deep(ol ol),
 .answer.md :deep(ul ol),
@@ -430,7 +475,29 @@ defineExpose({ scrollDown })
 }
 
 .msg-error { color: var(--clay); font-size: var(--fs-sm); margin-top: var(--sp-2); }
-.msg-actions { margin-top: var(--sp-3); display: flex; gap: var(--sp-2); }
+.msg-actions {
+  margin-top: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.act-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
+.act-btn:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--moss) 10%, transparent);
+}
+.act-btn svg { display: block; }
 
 .thinking { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-mute); }
 .thinking-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
