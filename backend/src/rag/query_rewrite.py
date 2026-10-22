@@ -99,6 +99,7 @@ async def rewrite_query(
     intent: Intent | IntentResult | None = None,
     empty_retry: bool = False,
     client: SiliconFlowClient | None = None,
+    temperature: float | None = None,
 ) -> RewriteResult:
     """改写检索问句；empty_retry 表示上次检索无结果，请换关键词。"""
     q = (user_query or "").strip()
@@ -130,7 +131,8 @@ async def rewrite_query(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
-            ]
+            ],
+            temperature=temperature,
         )
         result = _parse_rewrite_json(str(raw or ""), fallback_query=q)
         logger.info(
@@ -151,6 +153,7 @@ async def clarify_after_empty(
     history: Sequence[dict] | None = None,
     search_query: str = "",
     client: SiliconFlowClient | None = None,
+    temperature: float | None = None,
 ) -> str:
     """检索仍空时生成收窄反问。"""
     q = (user_query or "").strip()
@@ -174,7 +177,8 @@ async def clarify_after_empty(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
-            ]
+            ],
+            temperature=temperature,
         )
         text = str(raw or "").strip()
         return text or fallback

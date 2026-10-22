@@ -47,6 +47,7 @@ def ensure_schema() -> None:
     _ensure_pipeline_schema(engine)
     _ensure_company_name_zh_column(engine)
     _ensure_crawl_config_columns(engine)
+    _ensure_rag_config_columns(engine)
     _encrypt_llm_profile_keys()
     _ensure_default_vector_dim(engine)
     _fix_naive_publish_time_as_shanghai(engine)
@@ -172,6 +173,39 @@ def _ensure_crawl_config_columns(engine) -> None:
             return
         conn.execute(
             text("ALTER TABLE crawl_config ADD COLUMN IF NOT EXISTS interval_minutes INTEGER")
+        )
+
+
+def _ensure_rag_config_columns(engine) -> None:
+    """为 rag_config 补齐混合检索 / 重排 / 历史 / 温度列。"""
+    cols = (
+        ("hybrid_vector_weight", "DOUBLE PRECISION DEFAULT 0.6"),
+        ("rerank_pool_multiplier", "INTEGER DEFAULT 2"),
+        ("history_turns", "INTEGER DEFAULT 12"),
+        ("temperature", "DOUBLE PRECISION DEFAULT 0.3"),
+    )
+    with engine.begin() as conn:
+        if conn.execute(text("SELECT to_regclass('public.rag_config')")).scalar() is None:
+            return
+        for name, ddl in cols:
+            conn.execute(text(f"ALTER TABLE rag_config ADD COLUMN IF NOT EXISTS {name} {ddl}"))
+        conn.execute(
+            text(
+                "UPDATE rag_config SET hybrid_vector_weight = 0.6 "
+                "WHERE hybrid_vector_weight IS NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "UPDATE rag_config SET rerank_pool_multiplier = 2 "
+                "WHERE rerank_pool_multiplier IS NULL"
+            )
+        )
+        conn.execute(
+            text("UPDATE rag_config SET history_turns = 12 WHERE history_turns IS NULL")
+        )
+        conn.execute(
+            text("UPDATE rag_config SET temperature = 0.3 WHERE temperature IS NULL")
         )
 
 

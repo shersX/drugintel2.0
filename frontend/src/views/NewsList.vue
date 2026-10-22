@@ -2,16 +2,6 @@
   <div>
     <header class="ed-head reveal">
       <div class="ed-kicker">Newsroom · 情报目录</div>
-      <div class="head-row">
-        <h1 class="ed-title">情报流</h1>
-        <button class="secondary" :disabled="loading" @click="reload">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" :class="{ spinning: loading }">
-            <path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" />
-          </svg>
-          刷新
-        </button>
-      </div>
     </header>
 
     <div class="filters">
@@ -68,6 +58,13 @@
           <button type="button" class="cal-clear" @click="clearDates">清除</button>
         </div>
       </div>
+      <button class="secondary refresh-btn" :disabled="loading" @click="reload">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" :class="{ spinning: loading }">
+          <path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" />
+        </svg>
+        刷新
+      </button>
     </div>
 
     <div v-if="error" class="card empty">
@@ -144,11 +141,17 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import { session } from '../session'
 import { useAsync } from '../composables'
-import { crawlerLabel, crawlerSources, formatDateTimeMinute, plainAbstract, setCrawlerSources } from '../format'
+import {
+  crawlerLabel,
+  formatDateTimeMinute,
+  newsCrawlerSources,
+  plainAbstract,
+  setCrawlerSources,
+} from '../format'
 
 const route = useRoute()
 
-const sources = crawlerSources
+const sources = computed(() => newsCrawlerSources())
 const items = ref([])
 const page = ref(1)
 const total = ref(0)
@@ -185,13 +188,23 @@ function toggleSource() {
   sourceOpen.value = !sourceOpen.value
 }
 
+function pruneNewsSources() {
+  const allowed = new Set(sources.value.map((s) => s.key))
+  selectedSources.value = selectedSources.value.filter((k) => allowed.has(k))
+  appliedSources.value = appliedSources.value.filter((k) => allowed.has(k))
+}
+
 async function ensureSources() {
-  if (sources.value.length) return
+  if (sources.value.length) {
+    pruneNewsSources()
+    return
+  }
   try {
     setCrawlerSources(await api.crawlers())
   } catch {
     /* 保持空，下拉里会提示 */
   }
+  pruneNewsSources()
 }
 const dateLabel = computed(() => {
   if (dateFrom.value && dateTo.value) return `${dateFrom.value} 至 ${dateTo.value}`
@@ -225,6 +238,7 @@ async function load() {
 }
 
 function applySearch() {
+  pruneNewsSources()
   appliedKeyword.value = keyword.value.trim()
   appliedSources.value = [...selectedSources.value]
   appliedDateFrom.value = dateFrom.value
@@ -337,24 +351,39 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 </script>
 
 <style scoped>
+.ed-head { margin-bottom: clamp(16px, 2.5vw, 28px); }
 .filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
   margin-bottom: 18px;
 }
 .filters input[type="search"] {
   flex: 1 1 220px;
   min-width: 180px;
+  box-sizing: border-box;
+  min-height: 44px;
 }
-.picker { position: relative; }
+.filters > .secondary,
+.filters .picker-btn {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 11px 22px;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.picker { position: relative; display: flex; align-items: stretch; }
 .picker-btn {
   background: transparent;
   color: var(--ink-soft);
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-md);
-  padding: 11px 14px;
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -367,6 +396,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   box-shadow: none;
   transform: none;
 }
+.refresh-btn { flex: none; }
 .picker-menu {
   position: absolute;
   z-index: 30;
@@ -472,13 +502,6 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   letter-spacing: 0.08em;
   font-size: var(--fs-xs);
 }
-.head-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-.head-row .ed-title { margin: 0; }
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

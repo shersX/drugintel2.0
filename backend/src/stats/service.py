@@ -52,13 +52,22 @@ def overview_stats(session: Session) -> Dict[str, Any]:
 
 
 def development_stage_stats(session: Session) -> List[Dict[str, Any]]:
+    from backend.src.pipeline_intel.normalize import stage_label
+
     rows = session.execute(
         select(PipelineAsset.current_stage, func.count())
         .where(PipelineAsset.status == "active")
         .group_by(PipelineAsset.current_stage)
         .order_by(func.count().desc())
     ).all()
-    return [{"stage": r[0] or "unknown", "count": int(r[1])} for r in rows]
+    return [
+        {
+            "stage": r[0] or "unknown",
+            "label": stage_label(r[0] or "unknown"),
+            "count": int(r[1]),
+        }
+        for r in rows
+    ]
 
 
 def news_trend_stats(session: Session, *, days: int = 14) -> List[Dict[str, Any]]:

@@ -35,6 +35,14 @@ def rrf_fuse(
 
 
 def _hybrid_weights() -> Tuple[float, float]:
+    """优先 rag_config；失败则 HYBRID_* 环境变量。rrf_k 固定由 rrf_fuse 默认 60。"""
+    try:
+        from backend.src.rag.settings import load_rag_settings
+
+        s = load_rag_settings()
+        return s.hybrid_vector_weight, s.hybrid_bm25_weight
+    except Exception:
+        pass
     vector_w = float(os.getenv("HYBRID_VECTOR_WEIGHT", "0.6"))
     bm25_w = float(os.getenv("HYBRID_BM25_WEIGHT", "0.4"))
     total = vector_w + bm25_w

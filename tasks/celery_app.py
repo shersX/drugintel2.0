@@ -15,9 +15,15 @@ celery_app.conf.timezone = "Asia/Shanghai"
 
 @worker_process_init.connect
 def _ensure_schema_on_worker(**_kwargs):
+    from backend.src.crawl.schedule import abandon_orphan_runs
     from backend.src.db.schema import ensure_schema
 
     ensure_schema()
+    try:
+        abandon_orphan_runs("Worker 启动：作废未完成的采集轮次")
+    except Exception:
+        # worker 仍可启动；卡死状态可稍后由 API 或手动 abandon 清理
+        pass
 
 
 celery_app.conf.beat_schedule = {

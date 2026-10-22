@@ -13,10 +13,16 @@ export function setCrawlerSources(rows) {
     const key = String(row.key || '').trim()
     if (!key) continue
     const label = String(row.name || key)
-    next.push({ key, label })
+    const kind = String(row.kind || 'news').toLowerCase() === 'pipeline' ? 'pipeline' : 'news'
+    next.push({ key, label, kind })
     crawlerLabels.set(key.toLowerCase(), label)
   }
   crawlerSources.value = next
+}
+
+/** 情报流来源筛选：仅新闻爬虫，不含管线 */
+export function newsCrawlerSources() {
+  return crawlerSources.value.filter((s) => s.kind !== 'pipeline')
 }
 
 export function crawlerLabel(crawler) {

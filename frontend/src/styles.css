@@ -118,8 +118,18 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
 /* ============================================================
    刊头 Masthead + 页脚
    ============================================================ */
-.shell { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
-.shell > .app-layout { flex: 1; min-height: 0; }
+.shell {
+  position: relative;
+  z-index: 1;
+  height: 100dvh;
+  height: 100vh;
+  min-height: 100dvh;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shell > .app-layout { flex: 1; min-height: 0; height: 100%; }
 
 .masthead {
   position: sticky;

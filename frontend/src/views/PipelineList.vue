@@ -1,9 +1,9 @@
 <template>
-  <div class="pipe-page">
+  <div class="pipe-page" :class="{ 'is-entered': entered }">
     <p v-if="error" class="form-error">{{ error }}</p>
 
     <div class="pipe-grid">
-      <section class="main-panel">
+      <section class="main-panel pipe-scroll" style="--scroll-delay: 0ms">
         <div class="modality-tabs" role="tablist">
           <button
             v-for="m in modalityTabs"
@@ -27,7 +27,7 @@
           <span v-if="hasActiveFilters" class="meta filtered">已筛选</span>
         </div>
 
-        <div class="table-wrap">
+        <div class="table-wrap" :class="{ dimmed: loading && allItems.length }">
           <table class="pipe-table">
             <thead>
               <tr>
@@ -45,14 +45,21 @@
                 <th>适应症</th>
                 <th>研发公司</th>
                 <th class="progress-h">
-                  <span>临床前</span><span>I期</span><span>II期</span><span>III期</span><span>申报</span><span>上市</span>
+                  <span v-for="code in stageBarOrder" :key="code">{{ stageLabel(code) }}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="loading && !items.length">
-                <td colspan="6" class="empty-cell">加载中…</td>
-              </tr>
+              <template v-if="showTableSkeleton">
+                <tr v-for="n in 8" :key="'sk-' + n" class="skel-row" aria-hidden="true">
+                  <td class="col-check"><span class="skeleton skel-check" /></td>
+                  <td><span class="skeleton skel-line" style="width: 72%" /></td>
+                  <td><span class="skeleton skel-line" style="width: 58%" /></td>
+                  <td><span class="skeleton skel-line" style="width: 80%" /></td>
+                  <td><span class="skeleton skel-line" style="width: 48%" /></td>
+                  <td><span class="skeleton skel-bar" /></td>
+                </tr>
+              </template>
               <tr v-else-if="!items.length">
                 <td colspan="6" class="empty-cell">
                   <template v-if="hasActiveFilters">
@@ -65,30 +72,32 @@
                   </template>
                 </td>
               </tr>
-              <tr
-                v-for="row in items"
-                :key="row.id"
-                class="clickable"
-                @click="$router.push(`/pipeline/${row.id}`)"
-              >
-                <td class="col-check" @click.stop>
-                  <input
-                    type="checkbox"
-                    :checked="selectedIds.has(row.id)"
-                    @change="toggleOne(row.id, $event)"
-                  />
-                </td>
-                <td>
-                  <strong>{{ row.drug_name }}</strong>
-                  <span v-if="row.review_status === 'corrected'" class="rev-tag">已校对</span>
-                </td>
-                <td>{{ row.target || '—' }}</td>
-                <td class="cell-ind">{{ row.indication || '—' }}</td>
-                <td>{{ row.company_name || '—' }}</td>
-                <td>
-                  <PipelineStageBar :stage="row.current_stage" :label="row.stage_label" />
-                </td>
-              </tr>
+              <template v-else>
+                <tr
+                  v-for="row in items"
+                  :key="row.id"
+                  class="clickable"
+                  @click="$router.push(`/pipeline/${row.id}`)"
+                >
+                  <td class="col-check" @click.stop>
+                    <input
+                      type="checkbox"
+                      :checked="selectedIds.has(row.id)"
+                      @change="toggleOne(row.id, $event)"
+                    />
+                  </td>
+                  <td>
+                    <strong>{{ row.drug_name }}</strong>
+                    <span v-if="row.review_status === 'corrected'" class="rev-tag">已校对</span>
+                  </td>
+                  <td>{{ row.target || '—' }}</td>
+                  <td class="cell-ind">{{ row.indication || '—' }}</td>
+                  <td>{{ row.company_name || '—' }}</td>
+                  <td>
+                    <PipelineStageBar :stage="row.current_stage" :label="row.stage_label" />
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -102,7 +111,7 @@
       </section>
 
       <aside class="analytics-panel">
-        <div class="analytics-card">
+        <div class="analytics-card pipe-scroll" style="--scroll-delay: 120ms">
           <div class="card-h">
             <h3>靶点赛道对比</h3>
             <UiSelect
@@ -114,7 +123,14 @@
               @change="loadAnalytics"
             />
           </div>
-          <div v-if="!(compare.series || []).length" class="meta empty-side">暂无对比数据</div>
+          <div v-if="showSideSkeleton" class="side-skel" aria-hidden="true">
+            <div v-for="n in 5" :key="'cmp-sk-' + n" class="side-skel-row">
+              <span class="skeleton skel-name" />
+              <span class="skeleton skel-track" />
+              <span class="skeleton skel-n" />
+            </div>
+          </div>
+          <div v-else-if="!(compare.series || []).length" class="meta empty-side">暂无对比数据</div>
           <div v-else class="bars">
             <div v-for="s in compare.series" :key="s.company" class="bar-row">
               <div class="bar-name" :title="s.company">{{ s.company }}</div>
@@ -125,9 +141,15 @@
             </div>
           </div>
         </div>
-        <div class="analytics-card">
+        <div class="analytics-card pipe-scroll" style="--scroll-delay: 220ms">
           <div class="card-h"><h3>竞争格局</h3></div>
-          <ol v-if="(competition.items || []).length" class="rank-list">
+          <div v-if="showSideSkeleton" class="side-skel" aria-hidden="true">
+            <div v-for="n in 5" :key="'rank-sk-' + n" class="side-skel-rank">
+              <span class="skeleton skel-rank" />
+              <span class="skeleton skel-line" style="width: 70%" />
+            </div>
+          </div>
+          <ol v-else-if="(competition.items || []).length" class="rank-list">
             <li v-for="c in competition.items" :key="c.company">
               <span class="rank">{{ c.rank }}</span>
               <div class="rank-body">
@@ -144,12 +166,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PipelineStageBar from '../components/PipelineStageBar.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { useAsync } from '../composables'
 import { usePipelineFilters } from '../composables/usePipelineFilters'
+import { STAGE_BAR_ORDER, stageLabel } from '../pipelineStages'
+
+const stageBarOrder = STAGE_BAR_ORDER
 
 const {
   state,
@@ -160,16 +185,18 @@ const {
   clearFilters,
   setModality,
   setPage,
-  loadFacets,
   bump,
 } = usePipelineFilters()
 
-const items = ref([])
+/** 当前筛选下的全量结果；翻页只做本地切片，不打接口 */
+const allItems = ref([])
 const total = ref(0)
 const selectedIds = ref(new Set())
 const compare = ref({ series: [], available_targets: [] })
 const competition = ref({ items: [] })
 const compareTarget = ref('')
+const entered = ref(false)
+const analyticsReady = ref(false)
 const { loading, error, run } = useAsync()
 
 const modalityTabs = [
@@ -182,6 +209,12 @@ const modalityTabs = [
 ]
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / state.pageSize)))
+const items = computed(() => {
+  const start = (state.page - 1) * state.pageSize
+  return allItems.value.slice(start, start + state.pageSize)
+})
+const showTableSkeleton = computed(() => loading.value && !allItems.value.length)
+const showSideSkeleton = computed(() => loading.value && !analyticsReady.value)
 const allSelected = computed(
   () => items.value.length > 0 && items.value.every((r) => selectedIds.value.has(r.id)),
 )
@@ -235,22 +268,35 @@ async function loadAnalytics() {
     competition.value = comp || { items: [] }
   } catch {
     /* ignore */
+  } finally {
+    analyticsReady.value = true
   }
 }
 
+function listFetchParams() {
+  return { ...filterParams(), page: 1, page_size: 5000 }
+}
+
 async function reload() {
+  analyticsReady.value = false
   const data = await run(() =>
     Promise.all([
-      api.pipelineAssets(filterParams()),
+      api.pipelineAssets(listFetchParams()),
       api.pipelineFacets('active'),
     ]),
   )
-  if (!data) return
+  if (!data) {
+    analyticsReady.value = true
+    return
+  }
   const [a, f] = data
-  items.value = a?.items || []
-  total.value = a?.total || 0
+  allItems.value = a?.items || []
+  total.value = a?.total ?? allItems.value.length
   if (f) facets.value = f
   selectedIds.value = new Set()
+  if (state.page > Math.max(1, Math.ceil(total.value / state.pageSize))) {
+    state.page = 1
+  }
   await loadAnalytics()
 }
 
@@ -261,8 +307,9 @@ function exportCsv() {
 watch(revision, () => { reload() })
 
 onMounted(async () => {
-  await loadFacets()
-  await reload()
+  reload()
+  await nextTick()
+  entered.value = true
 })
 </script>
 
@@ -310,7 +357,11 @@ onMounted(async () => {
   border-radius: 6px;
 }
 .filtered { margin-left: auto; font-size: 12px; }
-.table-wrap { overflow-x: auto; }
+.table-wrap {
+  overflow-x: auto;
+  transition: opacity 160ms var(--ease-out);
+}
+.table-wrap.dimmed { opacity: 0.45; pointer-events: none; }
 .pipe-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pipe-table th, .pipe-table td {
   text-align: left;
@@ -404,6 +455,79 @@ onMounted(async () => {
 .rank-body { display: grid; gap: 1px; min-width: 0; }
 .rank-body strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-side { font-size: 12px; padding: 4px 0; }
+
+/* 画卷展开：自上而下 clip-path，仅进入页当次 */
+.pipe-scroll {
+  opacity: 0;
+  clip-path: inset(0 0 100% 0);
+  transform-origin: top center;
+  will-change: clip-path, opacity;
+}
+.pipe-page.is-entered .pipe-scroll {
+  animation: pipe-unfurl 600ms var(--ease-spring) forwards;
+  animation-delay: var(--scroll-delay, 0ms);
+}
+@keyframes pipe-unfurl {
+  from {
+    opacity: 0.35;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.skel-row td { pointer-events: none; }
+.skel-check {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.skel-line {
+  display: inline-block;
+  height: 12px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.skel-bar {
+  display: block;
+  height: 10px;
+  width: 100%;
+  min-width: 120px;
+}
+.side-skel { display: grid; gap: 8px; padding: 4px 0; }
+.side-skel-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 24px;
+  gap: 4px;
+  align-items: center;
+}
+.skel-name { display: block; height: 10px; width: 90%; }
+.skel-track { display: block; height: 6px; width: 100%; border-radius: 99px; }
+.skel-n { display: block; height: 10px; width: 100%; }
+.side-skel-rank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skel-rank {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pipe-scroll {
+    opacity: 1;
+    clip-path: none;
+    animation: none !important;
+  }
+}
 
 @media (max-width: 1100px) {
   .pipe-grid { grid-template-columns: 1fr; }

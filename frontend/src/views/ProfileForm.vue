@@ -486,12 +486,13 @@ label {
 .block {
   grid-column: 1 / -1;
   margin: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  padding: 10px 12px 12px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px 16px;
+  gap: 12px 14px;
+  background: color-mix(in srgb, var(--wash) 40%, transparent);
 }
 legend {
   padding: 0 6px;

@@ -108,6 +108,7 @@ async def generate_answer(
     history: Sequence[dict] | None = None,
     intent: Intent | IntentResult | None = None,
     page_news_id: Optional[int] = None,
+    temperature: float | None = None,
 ) -> str:
     if not hits and not _is_chitchat(intent):
         return _EMPTY_RAG_REPLY
@@ -119,7 +120,8 @@ async def generate_answer(
             history=history,
             intent=intent,
             page_news_id=page_news_id,
-        )
+        ),
+        temperature=temperature,
     )
 
 
@@ -131,6 +133,7 @@ async def generate_answer_stream(
     history: Sequence[dict] | None = None,
     intent: Intent | IntentResult | None = None,
     page_news_id: Optional[int] = None,
+    temperature: float | None = None,
 ) -> AsyncIterator[str]:
     if not hits and not _is_chitchat(intent):
         yield _EMPTY_RAG_REPLY
@@ -143,6 +146,7 @@ async def generate_answer_stream(
             history=history,
             intent=intent,
             page_news_id=page_news_id,
-        )
+        ),
+        temperature=temperature,
     ):
         yield piece

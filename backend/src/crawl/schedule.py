@@ -23,6 +23,8 @@ logger = get_logger("crawl.schedule")
 SH = ZoneInfo("Asia/Shanghai")
 LOCK_KEY = "drugintel:crawl:lock"
 LOCK_TTL_SEC = 2 * 60 * 60
+# 单源爬取+重试上限；超时后记失败并放行其它源
+CRAWLER_TIMEOUT_SEC = 10 * 60
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 _RELEASE_LUA = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -226,7 +228,13 @@ def renew_lock(token: str) -> bool:
 
 
 def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Optional[str] = None) -> None:
-    """短事务写入 CrawlRun.progress，并可续期采集锁。"""
+    """短事务写入 CrawlRun.progress，并可续期采集锁。
+
+    支持：
+    - 顶层字段（兼容旧进度条）
+    - fields["round"] 字典合并进 progress.round，并镜像 stage/label 等到顶层
+    - fields["by_crawler"] 为 {key: partial} 时按源合并
+    """
     if lock_token:
         try:
             renew_lock(lock_token)
@@ -237,9 +245,69 @@ def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Opti
         if run is None:
             return
         current = dict(run.progress or {})
-        current.update({k: v for k, v in fields.items() if v is not None})
+        payload = {k: v for k, v in fields.items() if v is not None}
+
+        round_patch = payload.pop("round", None)
+        by_patch = payload.pop("by_crawler", None)
+
+        if isinstance(round_patch, dict):
+            round_data = dict(current.get("round") or {})
+            round_data.update({k: v for k, v in round_patch.items() if v is not None})
+            current["round"] = round_data
+            for key in ("stage", "label", "detail", "crawlers_done", "crawlers_total"):
+                if key in round_data:
+                    current[key] = round_data[key]
+
+        if isinstance(by_patch, dict):
+            by_crawler = dict(current.get("by_crawler") or {})
+            for key, partial in by_patch.items():
+                if not isinstance(partial, dict):
+                    continue
+                prev = dict(by_crawler.get(str(key)) or {})
+                prev.update({k: v for k, v in partial.items() if v is not None})
+                prev["updated_at"] = now_sh().isoformat()
+                by_crawler[str(key)] = prev
+            current["by_crawler"] = by_crawler
+
+        current.update(payload)
         current["updated_at"] = now_sh().isoformat()
         run.progress = current
+
+
+def abandon_orphan_runs(reason: str = "进程中断，本轮已作废") -> Dict[str, Any]:
+    """将卡住的 status=running 轮次标为 aborted，并清 Redis 采集锁。
+
+    不改 CrawlConfig.running（定时意图保留）。
+    """
+    msg = (reason or "进程中断，本轮已作废").strip()[:4000]
+    now = now_sh()
+    abandoned_ids: List[int] = []
+    with session_scope() as session:
+        rows = session.scalars(
+            select(CrawlRun).where(CrawlRun.status == "running")
+        ).all()
+        for run in rows:
+            run.status = "aborted"
+            run.finished_at = now
+            run.error = msg
+            progress = dict(run.progress or {})
+            progress.update(
+                {
+                    "stage": "failed",
+                    "label": "本轮已中断",
+                    "detail": msg,
+                    "updated_at": now.isoformat(),
+                }
+            )
+            run.progress = progress
+            abandoned_ids.append(int(run.id))
+    try:
+        _redis().delete(LOCK_KEY)
+    except Exception:
+        logger.warning("清除采集锁失败", exc_info=True)
+    if abandoned_ids:
+        logger.warning("已作废卡住的采集轮次 ids=%s reason=%s", abandoned_ids, msg)
+    return {"abandoned": len(abandoned_ids), "ids": abandoned_ids}
 
 
 def _available() -> List[Dict[str, Any]]:
@@ -546,8 +614,13 @@ async def _execute(
     run_id: Optional[int] = None,
     lock_token: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """并发爬取；每源完成即 pipeline；全部终态后统一聚类。"""
     from backend.src.clustering.service import run_clustering
-    from backend.src.crawlers.registry import run_all_crawlers
+    from backend.src.crawlers.registry import (
+        MAX_RETRY_ATTEMPTS,
+        _run_crawler_with_retry,
+        format_crawler_error,
+    )
     from backend.src.crawlers.settings_store import merged_crawler_registry
     from backend.src.monitor.health import record_crawler_task
     from backend.src.processors.pipeline import run_processing_pipeline
@@ -556,90 +629,231 @@ async def _execute(
     configs = {
         key: merged[key]
         for key in keys
-        if key in merged and merged[key].get("enabled", True)
+        if key in merged
+        and merged[key].get("enabled", True)
+        and merged[key].get("kind", "news") == "news"
+        and merged[key].get("function") is not None
     }
     if not configs:
         return {"status": "failed", "error": "没有可运行的爬虫"}
+
+    total = len(configs)
 
     def _progress(fields: Dict[str, Any]) -> None:
         if run_id is None:
             return
         update_run_progress(run_id, fields, lock_token=lock_token)
 
+    def _set_crawler(key: str, partial: Dict[str, Any], *, done: Optional[int] = None) -> None:
+        round_patch: Dict[str, Any] = {
+            "stage": "running",
+            "label": "采集中",
+            "crawlers_total": total,
+        }
+        if done is not None:
+            round_patch["crawlers_done"] = done
+            round_patch["detail"] = f"已完成 {done}/{total}"
+        _progress({"round": round_patch, "by_crawler": {key: partial}})
+
     started = now_sh()
+    initial_by = {
+        key: {"stage": "crawling", "label": "爬取中"}
+        for key in configs
+    }
     _progress(
         {
-            "stage": "crawling",
-            "label": "爬取中",
+            "round": {
+                "stage": "running",
+                "label": "采集中",
+                "crawlers_done": 0,
+                "crawlers_total": total,
+                "detail": "开始并发爬取",
+            },
+            "by_crawler": initial_by,
+            "stage": "running",
+            "label": "采集中",
             "crawlers_done": 0,
-            "crawlers_total": len(configs),
-            "detail": "开始并发爬取",
+            "crawlers_total": total,
         }
     )
 
-    def on_crawler_done(name, *, items, error, log_text, done, total):
-        finished_at = now_sh()
-        record_crawler_task(
-            crawler_name=name,
-            status="failed" if error else "success",
-            total_count=len(items or []),
-            success_count=0 if error else len(items or []),
-            error_message=error,
-            log_text=log_text or None,
-            start_time=started,
-            end_time=finished_at,
+    task_map: Dict[asyncio.Task, str] = {}
+    for name, config in configs.items():
+        crawler_func = config["function"]
+        task_kwargs = {
+            "page_count": int(config.get("page_count", 1) or 1),
+            "fetch_details": bool(config.get("fetch_details", True)),
+            "concurrency": int(config.get("concurrency", 5) or 5),
+        }
+        task = asyncio.create_task(
+            asyncio.wait_for(
+                _run_crawler_with_retry(
+                    crawler_key=name,
+                    crawler_func=crawler_func,
+                    kwargs=task_kwargs,
+                ),
+                timeout=CRAWLER_TIMEOUT_SEC,
+            )
         )
-        label = CRAWLER_REGISTRY.get(name, {}).get("name") or name
+        task_map[task] = name
+
+    failures: Dict[str, str] = {}
+    pipeline_stats_all: List[Dict[str, Any]] = []
+    done_count = 0
+    pending: set[asyncio.Task] = set(task_map.keys())
+
+    while pending:
+        done_set, pending = await asyncio.wait(
+            pending, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in done_set:
+            name = task_map[task]
+            display = CRAWLER_REGISTRY.get(name, {}).get("name") or name
+            finished_at = now_sh()
+            items: List[Any] = []
+            err: Optional[str] = None
+            log_text = ""
+
+            try:
+                result = task.result()
+            except asyncio.TimeoutError:
+                err = f"单源超时（{CRAWLER_TIMEOUT_SEC // 60} 分钟）"
+                logger.error("爬虫 %s %s", name, err)
+            except Exception as exc:
+                err = format_crawler_error(exc)
+                logger.error("爬虫 %s 执行失败: %s", name, err)
+            else:
+                crawler_data, crawl_exc, log_text = result
+                if crawl_exc is not None:
+                    err = format_crawler_error(crawl_exc)
+                    logger.error(
+                        "爬虫 %s 重试 %s 次后仍失败: %s",
+                        name,
+                        MAX_RETRY_ATTEMPTS,
+                        err,
+                    )
+                else:
+                    items = list(crawler_data or [])
+
+            done_count += 1
+            record_crawler_task(
+                crawler_name=name,
+                status="failed" if err else "success",
+                total_count=len(items),
+                success_count=0 if err else len(items),
+                error_message=err,
+                log_text=log_text or None,
+                start_time=started,
+                end_time=finished_at,
+            )
+
+            if err:
+                failures[name] = err
+                _set_crawler(
+                    name,
+                    {"stage": "failed", "label": "失败", "detail": err[:500]},
+                    done=done_count,
+                )
+                continue
+
+            _set_crawler(
+                name,
+                {
+                    "stage": "filtering",
+                    "label": "处理中",
+                    "detail": f"{display} 爬取 {len(items)} 条",
+                    "items_in": len(items),
+                },
+                done=done_count,
+            )
+
+            def _crawler_progress(fields: Dict[str, Any], *, _key: str = name) -> None:
+                patch = {
+                    "stage": fields.get("stage") or "filtering",
+                    "label": fields.get("label") or "处理中",
+                }
+                for k in ("detail", "items_in", "items_out", "raw_inserted"):
+                    if fields.get(k) is not None:
+                        patch[k] = fields[k]
+                _set_crawler(_key, patch)
+
+            try:
+                outcome = await run_processing_pipeline(
+                    {name: items},
+                    persist=True,
+                    progress=_crawler_progress,
+                )
+                stats = outcome.get("stats") or {}
+                pipeline_stats_all.append({"crawler": name, **stats})
+                _set_crawler(
+                    name,
+                    {
+                        "stage": "done",
+                        "label": "处理完成",
+                        "detail": f"落库 {stats.get('raw_inserted', 0)} 条",
+                        "raw_inserted": stats.get("raw_inserted", 0),
+                    },
+                    done=done_count,
+                )
+            except Exception as exc:
+                logger.exception("爬虫 %s 后处理失败", name)
+                msg = str(exc)[:500]
+                failures[name] = f"后处理失败：{msg}"
+                _set_crawler(
+                    name,
+                    {"stage": "failed", "label": "后处理失败", "detail": msg},
+                    done=done_count,
+                )
+
+    if len(failures) == total:
+        summary = "；".join(f"{key}: {msg}" for key, msg in failures.items())
         _progress(
             {
-                "stage": "crawling",
-                "label": "爬取中",
-                "crawlers_done": done,
-                "crawlers_total": total,
-                "detail": f"{label} 完成" + (f"（失败）" if error else f" {len(items or [])} 条"),
+                "round": {"stage": "failed", "label": "全部失败", "detail": summary},
+                "stage": "failed",
+                "label": "全部失败",
+                "detail": summary,
             }
         )
-
-    batch = await run_all_crawlers(crawler_configs=configs, on_crawler_done=on_crawler_done)
-    failures = getattr(batch, "failures", {}) or {}
-
-    if len(failures) == len(configs):
-        summary = "；".join(f"{key}: {msg}" for key, msg in failures.items())
-        _progress({"stage": "failed", "label": "全部爬虫失败", "detail": summary})
         return {"status": "failed", "error": f"全部爬虫失败：{summary}"}
 
-    _progress({"stage": "filtering", "label": "处理中", "detail": "关键词过滤与落库"})
-    try:
-        outcome = await run_processing_pipeline(
-            batch,
-            persist=True,
-            progress=_progress,
-        )
-    except Exception as exc:
-        logger.exception("流水线失败")
-        _progress({"stage": "failed", "label": "后处理失败", "detail": str(exc)[:500]})
-        note = None
-        if failures:
-            note = "部分爬虫失败：" + "；".join(f"{key}: {msg}" for key, msg in failures.items())
-        err = str(exc)
-        if note:
-            err = f"{note}；{err}"
-        return {
-            "status": "failed",
-            "error": err,
-            "pipeline": None,
-            "cluster": None,
+    _progress(
+        {
+            "round": {
+                "stage": "clustering",
+                "label": "聚类中",
+                "crawlers_done": total,
+                "crawlers_total": total,
+                "detail": "整轮统一聚类",
+            },
+            "stage": "clustering",
+            "label": "聚类中",
         }
-
-    _progress({"stage": "clustering", "label": "聚类中"})
+    )
     cluster_stats = run_clustering()
-    _progress({"stage": "done", "label": "本轮完成"})
+    _progress(
+        {
+            "round": {
+                "stage": "done",
+                "label": "本轮完成",
+                "crawlers_done": total,
+                "crawlers_total": total,
+            },
+            "stage": "done",
+            "label": "本轮完成",
+        }
+    )
     note = None
     if failures:
         note = "部分爬虫失败：" + "；".join(f"{key}: {msg}" for key, msg in failures.items())
+    merged_pipeline: Dict[str, Any] = {"by_crawler": pipeline_stats_all}
+    if pipeline_stats_all:
+        merged_pipeline["raw_inserted"] = sum(
+            int(s.get("raw_inserted") or 0) for s in pipeline_stats_all
+        )
     return {
         "status": "success",
         "error": note,
-        "pipeline": outcome.get("stats"),
+        "pipeline": merged_pipeline,
         "cluster": cluster_stats,
     }

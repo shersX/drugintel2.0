@@ -91,6 +91,7 @@ export const api = {
   crawlStatus: () => request('/api/crawl/status'),
   crawlStart: (body) => request('/api/crawl/start', { method: 'POST', body: JSON.stringify(body) }),
   crawlStop: () => request('/api/crawl/stop', { method: 'POST' }),
+  crawlAbandon: () => request('/api/crawl/abandon', { method: 'POST' }),
   crawlReprocess: (limit = 50) => request(`/api/crawl/reprocess?limit=${limit}`, { method: 'POST' }),
   llmProfiles: () => request('/api/llm/profiles'),
   createLlmProfile: (body) => request('/api/llm/profiles', { method: 'POST', body: JSON.stringify(body) }),

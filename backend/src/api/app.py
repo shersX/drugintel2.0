@@ -73,6 +73,7 @@ from backend.src.clustering.service import run_clustering
 from backend.src.core.logger import get_logger
 from backend.src.crawl.schedule import (
     CrawlConfigError,
+    abandon_orphan_runs,
     config_payload,
     start_schedule,
     status_payload,
@@ -116,6 +117,12 @@ logger = get_logger("api")
 async def lifespan(_app: FastAPI):
     ensure_schema()
     logger.info("数据库结构已检查")
+    try:
+        result = abandon_orphan_runs("API 启动：作废未完成的采集轮次")
+        if result.get("abandoned"):
+            logger.warning("启动时作废卡住采集轮次 %s", result)
+    except Exception:
+        logger.exception("启动时清理卡住采集轮次失败")
     yield
 
 
@@ -280,16 +287,19 @@ def _like_term(value: str) -> str:
 
 @app.get("/api/crawlers")
 def api_crawlers():
-    """来源筛选项（公开）。含已禁用爬虫，便于过滤历史入库数据。"""
+    """来源筛选项（公开）。含已禁用爬虫，便于过滤历史入库数据；含 kind 区分新闻/管线。"""
     from backend.src.crawlers.registry import CRAWLER_REGISTRY
 
     return ok([
-        {"key": key, "name": str(meta.get("name") or key)}
+        {
+            "key": key,
+            "name": str(meta.get("name") or key),
+            "kind": str(meta.get("kind") or "news"),
+        }
         for key, meta in CRAWLER_REGISTRY.items()
     ])
 
 
-_NEWS_CRAWLERS = {"bioon", "globenewswire", "prnewswire", "pharmcube"}
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
@@ -312,13 +322,15 @@ def api_news_list(
     q: Optional[str] = None,
 ):
     from sqlalchemy import func
+    from backend.src.crawlers.registry import news_crawler_keys
 
+    allowed = set(news_crawler_keys())
     keys = [item.strip().lower() for item in (crawlers or []) if item and item.strip()]
     if not keys and crawler and crawler.strip():
         keys = [crawler.strip().lower()]
-    unknown = [item for item in keys if item not in _NEWS_CRAWLERS]
+    unknown = [item for item in keys if item not in allowed]
     if unknown:
-        raise HTTPException(status_code=400, detail="未知来源")
+        raise HTTPException(status_code=400, detail="未知来源（管线爬虫不可用于新闻筛选）")
     start = _shanghai_day_start(date_from) if date_from else None
     end = _shanghai_day_start(date_to) + timedelta(days=1) if date_to else None
 
@@ -704,6 +716,19 @@ def api_crawl_stop(actor: Actor = Depends(admin_actor)):
     return ok(payload)
 
 
+@app.post("/api/crawl/abandon")
+def api_crawl_abandon(actor: Actor = Depends(admin_actor)):
+    """手动作废卡住的 running 轮次（进程崩溃后「本轮进行中」无法自行消失时用）。"""
+    result = abandon_orphan_runs("管理员手动清除卡死状态")
+    record_audit(
+        actor_id=actor.id,
+        action="crawl_abandon",
+        target="crawl",
+        detail=f"abandoned={result.get('abandoned', 0)}",
+    )
+    return ok({**result, **status_payload()})
+
+
 @app.get("/api/crawl/config")
 def api_crawl_config(_actor: Actor = Depends(admin_actor)):
     return ok(config_payload())
@@ -929,8 +954,7 @@ def api_pipeline_assets_export(
 
 
 @app.get("/api/pipeline/assets")
-def api_pipeline_assets(
-    q: str = "",
+def api_pipeline_assets(    q: str = "",
     target: str = "",
     indication: str = "",
     company: str = "",
@@ -940,7 +964,7 @@ def api_pipeline_assets(
     status: str = "active",
     watched_only: bool = False,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=5000),
     actor: Actor = Depends(current_actor),
 ):
     from backend.src.pipeline_intel.queries import list_assets
@@ -1172,13 +1196,21 @@ def api_admin_rag_config_put(body: RagConfigUpdate, actor: Actor = Depends(admin
             session,
             top_k=body.top_k,
             min_relevance_score=body.min_relevance_score,
+            hybrid_vector_weight=body.hybrid_vector_weight,
+            rerank_pool_multiplier=body.rerank_pool_multiplier,
+            history_turns=body.history_turns,
+            temperature=body.temperature,
         )
         payload = rag_config_to_dict(row)
     record_audit(
         actor_id=actor.id,
         action="rag_config_update",
         target="rag_config",
-        detail=f"top_k={payload['top_k']},min_score={payload['min_relevance_score']}",
+        detail=(
+            f"top_k={payload['top_k']},min_score={payload['min_relevance_score']},"
+            f"vec_w={payload['hybrid_vector_weight']},mult={payload['rerank_pool_multiplier']},"
+            f"hist={payload['history_turns']},temp={payload['temperature']}"
+        ),
     )
     return ok(payload)
 

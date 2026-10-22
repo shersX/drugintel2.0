@@ -21,22 +21,15 @@
 
 <script setup>
 import { computed } from 'vue'
+import { STAGE_BAR_ORDER } from '../pipelineStages'
 
 const props = defineProps({
   stage: { type: String, default: 'unknown' },
   label: { type: String, default: '' },
 })
 
-const nodes = [
-  { key: 'preclinical' },
-  { key: 'phase1' },
-  { key: 'phase2' },
-  { key: 'phase3' },
-  { key: 'nda' },
-  { key: 'approved' },
-]
-
-const ORDER = nodes.map((n) => n.key)
+const nodes = STAGE_BAR_ORDER.map((key) => ({ key }))
+const ORDER = STAGE_BAR_ORDER
 
 const isSpecial = computed(() => {
   const s = props.stage || 'unknown'

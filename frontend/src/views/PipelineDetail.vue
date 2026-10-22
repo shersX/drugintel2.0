@@ -142,6 +142,7 @@ import PipelineStageBar from '../components/PipelineStageBar.vue'
 import UiSelect from '../components/UiSelect.vue'
 import { formatTime } from '../format'
 import { useAsync } from '../composables'
+import { STAGE_EDIT_OPTIONS } from '../pipelineStages'
 import { session } from '../session'
 
 const route = useRoute()
@@ -169,16 +170,7 @@ const form = reactive({
   source_url: '',
 })
 
-const stageOptions = [
-  { value: 'preclinical', label: '临床前' },
-  { value: 'phase1', label: 'I 期' },
-  { value: 'phase2', label: 'II 期' },
-  { value: 'phase3', label: 'III 期' },
-  { value: 'nda', label: '申报上市' },
-  { value: 'approved', label: '已获批' },
-  { value: 'partner', label: '合作方推进' },
-  { value: 'unknown', label: '未知' },
-]
+const stageOptions = STAGE_EDIT_OPTIONS
 
 const modalityOptions = [
   { value: 'small_molecule', label: '小分子' },

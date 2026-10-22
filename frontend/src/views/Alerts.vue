@@ -2,7 +2,6 @@
   <div>
     <header class="ed-head reveal">
       <div class="ed-kicker">Watchlist · 订阅名单</div>
-      <h1 class="ed-title">告警订阅</h1>
       <p class="ed-lede">关注药物、公司或关键词：新闻正文命中会发信；管线进度变化 / 资产消失也会按名称匹配推送。</p>
     </header>
 
@@ -154,6 +153,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.ed-head { margin-bottom: clamp(16px, 2.5vw, 28px); }
+.ed-lede {
+  white-space: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+}
 .mail-banner {
   display: flex;
   flex-wrap: wrap;

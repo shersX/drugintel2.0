@@ -2,7 +2,6 @@
   <div>
     <header class="ed-head">
       <div class="ed-kicker">Directory</div>
-      <h1 class="ed-title">用户</h1>
       <p class="ed-lede">由管理员开户。停用后该账户立刻无法继续使用已登录的会话。</p>
     </header>
 

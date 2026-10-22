@@ -27,6 +27,10 @@ class TestRagDefaults(unittest.TestCase):
         self.assertIsInstance(settings, RagSettings)
         self.assertEqual(settings.top_k, 10)
         self.assertAlmostEqual(settings.min_relevance_score, 0.3)
+        self.assertAlmostEqual(settings.hybrid_vector_weight, 0.6)
+        self.assertEqual(settings.rerank_pool_multiplier, 2)
+        self.assertEqual(settings.history_turns, 12)
+        self.assertAlmostEqual(settings.temperature, 0.3)
 
 
 class TestCrawlerMerge(unittest.TestCase):

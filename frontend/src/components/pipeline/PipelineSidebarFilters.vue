@@ -48,7 +48,7 @@
       </label>
       <label class="chk">
         <input v-model="state.marketedOnly" type="checkbox" @change="onMarketedToggle" />
-        仅已上市
+        仅已获批
       </label>
     </div>
 

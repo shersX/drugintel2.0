@@ -51,6 +51,7 @@ import {
   sideItemsFor,
 } from '../../nav.config'
 import { useSidebarDrawer } from '../../composables/useSidebarDrawer'
+import { session } from '../../session'
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
 
@@ -60,8 +61,10 @@ const { drawerOpen, closeDrawer } = useSidebarDrawer()
 const mod = computed(() => resolveModule(route))
 const moduleKey = computed(() => mod.value?.key || '')
 const moduleLabel = computed(() => mod.value?.label || '')
-const sideItems = computed(() => (mod.value ? sideItemsFor(mod.value.key) : []))
-const showSidebar = computed(() => moduleShowsSidebar(mod.value))
+const sideItems = computed(() =>
+  mod.value ? sideItemsFor(mod.value.key, session.user) : [],
+)
+const showSidebar = computed(() => moduleShowsSidebar(mod.value, session.user))
 const isChat = computed(() => route.path === '/chat')
 
 watch(
@@ -75,13 +78,15 @@ watch(
   display: grid;
   grid-template-rows: var(--header-h, 64px) minmax(0, 1fr) auto;
   width: 100%;
-  min-height: 100dvh;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 .app-body {
   display: flex;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 .app-body > .side-desktop {
   flex: none;

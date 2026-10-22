@@ -69,7 +69,7 @@
           <div class="sec-mark"><span class="no">04</span><h3>研发阶段分布</h3><span class="rule"></span></div>
           <div v-if="stages.length" class="stage-bars">
             <div v-for="s in stages" :key="s.stage" class="stage-row">
-              <span class="stage-name">{{ stageLabel(s.stage) }}</span>
+              <span class="stage-name">{{ s.label || stageLabel(s.stage) }}</span>
               <div class="bar-track"><div class="bar-fill" :style="{ width: stageWidth(s) }"></div></div>
               <span class="mono">{{ s.count }}</span>
             </div>
@@ -96,6 +96,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
 import { session } from '../session'
 import { useAsync } from '../composables'
+import { stageLabel } from '../pipelineStages'
 import StatCard from '../components/StatCard.vue'
 import TrendChart from '../components/TrendChart.vue'
 
@@ -116,19 +117,6 @@ const stats = computed(() => {
   ]
 })
 
-const stageMap = {
-  preclinical: '临床前',
-  phase1: 'I 期',
-  phase2: 'II 期',
-  phase3: 'III 期',
-  nda: '申报上市',
-  approved: '已获批',
-  partner: '合作方推进',
-  unknown: '未知',
-}
-function stageLabel(s) {
-  return stageMap[s] || s
-}
 function stageWidth(s) {
   const max = Math.max(...stages.value.map((x) => x.count || 0), 1)
   return `${Math.round(((s.count || 0) / max) * 100)}%`

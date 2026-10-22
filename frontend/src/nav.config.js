@@ -50,8 +50,8 @@ export const TOP_MODULES = [
     to: '/settings',
     match: (route) =>
       route.path === '/settings'
-      || route.path === '/monitor'
-      || route.path === '/users',
+      || route.path === '/users'
+      || route.path === '/monitor',
     sidebar: true,
     auth: 'admin',
   },
@@ -82,8 +82,14 @@ export const SIDE_ITEMS = {
     { key: 'admin-rag', label: 'RAG 检索', to: '/settings?tab=rag', icon: 'search', match: (r) => r.path === '/settings' && r.query.tab === 'rag' },
     { key: 'admin-mail', label: '邮件服务', to: '/settings?tab=mail', icon: 'mail', match: (r) => r.path === '/settings' && r.query.tab === 'mail' },
     { key: 'admin-crawlers', label: '爬虫注册表', to: '/settings?tab=crawlers', icon: 'bot', match: (r) => r.path === '/settings' && r.query.tab === 'crawlers' },
+    {
+      key: 'admin-monitor',
+      label: '爬虫监控',
+      to: '/monitor',
+      icon: 'activity',
+      match: (r) => r.path === '/monitor',
+    },
     { key: 'admin-keywords', label: '过滤关键词', to: '/settings?tab=keywords', icon: 'tag', match: (r) => r.path === '/settings' && r.query.tab === 'keywords' },
-    { key: 'admin-monitor', label: '爬虫监控', to: '/monitor', icon: 'activity', match: (r) => r.path === '/monitor' },
     { key: 'admin-users', label: '用户与权限', to: '/users', icon: 'users', match: (r) => r.path === '/users' },
   ],
 }
@@ -101,10 +107,15 @@ export function visibleTopModules(user) {
   })
 }
 
-export function sideItemsFor(moduleKey) {
-  return SIDE_ITEMS[moduleKey] || []
+export function sideItemsFor(moduleKey, user = null) {
+  const items = SIDE_ITEMS[moduleKey] || []
+  return items.filter((item) => {
+    if (item.auth === 'admin') return user?.role === 'admin'
+    if (item.auth === 'login') return Boolean(user)
+    return true
+  })
 }
 
-export function moduleShowsSidebar(mod) {
-  return Boolean(mod?.sidebar && sideItemsFor(mod.key).length)
+export function moduleShowsSidebar(mod, user = null) {
+  return Boolean(mod?.sidebar && sideItemsFor(mod.key, user).length)
 }

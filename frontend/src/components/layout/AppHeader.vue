@@ -72,7 +72,9 @@ const menuRef = ref(null)
 const { toggleDrawer } = useSidebarDrawer()
 
 const modules = computed(() => visibleTopModules(session.user))
-const showSideDrawerBtn = computed(() => moduleShowsSidebar(resolveModule(route)))
+const showSideDrawerBtn = computed(() =>
+  moduleShowsSidebar(resolveModule(route), session.user),
+)
 const initials = computed(() => {
   const n = session.user?.display_name || session.user?.email || '?'
   return String(n).trim().slice(0, 1).toUpperCase()

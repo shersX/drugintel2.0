@@ -1,14 +1,11 @@
 <template>
   <div>
     <header class="ed-head reveal">
-      <div class="head-row">
-        <div>
-          <div class="ed-kicker">Crawl · 采集监控</div>
-          <h1 class="ed-title">爬虫监控</h1>
-          <p class="ed-lede">新闻采集与管线同步分区管理；可分别设置节奏并查看任务日志。</p>
-        </div>
-        <button class="secondary" :disabled="loading" @click="load">刷新</button>
-      </div>
+      <div class="ed-kicker">Crawl · 采集监控</div>
+      <p class="ed-lede">
+        只读查看基础设施、本轮按源进度与任务历史。启动与调度请到
+        <router-link to="/settings?tab=crawlers">爬虫注册表</router-link>。
+      </p>
     </header>
 
     <div v-if="error" class="card empty">
@@ -18,201 +15,83 @@
     </div>
 
     <template v-else>
-      <!-- 健康检查 -->
       <section class="reveal">
         <div class="sec-mark"><span class="no">01</span><h3>基础设施</h3><span class="rule"></span></div>
         <div class="grid health-grid">
-        <template v-if="loading && !checked">
-          <div v-for="i in 3" :key="i" class="card">
-            <div class="skeleton" style="width:80px;height:14px"></div>
-            <div class="skeleton" style="width:120px;height:26px;margin-top:12px"></div>
-          </div>
-        </template>
-        <template v-else>
-          <div v-for="(h, i) in healthRows" :key="h.name"
-               class="card health-card card-hover reveal" :style="{ '--reveal-delay': i * 70 + 'ms' }">
-            <div class="health-head">
-              <span :class="['dot', h.level]"></span>
-              <span class="health-name">{{ h.name }}</span>
+          <template v-if="loading && !checked">
+            <div v-for="i in 3" :key="i" class="card">
+              <div class="skeleton" style="width:80px;height:14px"></div>
+              <div class="skeleton" style="width:120px;height:26px;margin-top:12px"></div>
             </div>
-            <div class="health-value">{{ h.value }}</div>
-            <div class="meta">{{ h.detail }}</div>
-          </div>
-        </template>
+          </template>
+          <template v-else>
+            <div
+              v-for="(h, i) in healthRows"
+              :key="h.name"
+              class="card health-card card-hover reveal"
+              :style="{ '--reveal-delay': i * 70 + 'ms' }"
+            >
+              <div class="health-head">
+                <span :class="['dot', h.level]"></span>
+                <span class="health-name">{{ h.name }}</span>
+              </div>
+              <div class="health-value">{{ h.value }}</div>
+              <div class="meta">{{ h.detail }}</div>
+            </div>
+          </template>
         </div>
       </section>
 
       <section class="card reveal" style="margin-top:32px;--reveal-delay:120ms">
-        <div class="sec-mark"><span class="no">02</span><h3>采集调度</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">02</span><h3>本轮采集</h3><span class="rule"></span></div>
         <div class="crawl-status">
           <span class="pill" :class="phaseClass">{{ phaseLabel }}</span>
           <span class="meta">最近一轮 {{ fmt(crawl?.last_run?.started_at) }}</span>
           <span class="meta">下次预计 {{ formatNext(crawl?.next_run_at) }}</span>
-        </div>
-        <div v-if="progressView" class="progress-panel">
-          <div class="progress-head">
-            <strong>{{ progressView.label }}</strong>
-            <span class="meta">{{ progressView.detail }}</span>
-          </div>
-          <div class="progress-track" aria-hidden="true">
-            <div class="progress-fill" :style="{ width: progressView.pct + '%' }"></div>
-          </div>
-          <div class="progress-meta meta">
-            <span v-if="progressView.crawlerText">{{ progressView.crawlerText }}</span>
-            <span v-if="progressView.counts">{{ progressView.counts }}</span>
-          </div>
-          <ol class="progress-stages">
-            <li
-              v-for="s in progressStages"
-              :key="s.key"
-              :class="{ on: s.on, done: s.done }"
-            >{{ s.label }}</li>
-          </ol>
-        </div>
-        <div v-if="crawl && crawl.llm_ready === false" class="llm-gate">
-          <p class="form-error">{{ crawl.llm_message || '尚未配置 LLM，无法启动采集。' }}</p>
-          <router-link class="llm-gate-link" to="/settings">前往系统设置</router-link>
+          <span class="meta" v-if="roundDetail">{{ roundDetail }}</span>
         </div>
         <div v-if="crawl?.last_run?.error" class="run-error">
-          <p class="form-error">最近一轮失败：{{ shortError(crawl.last_run.error) }}</p>
-          <details v-if="crawl.last_run.error.length > 240" class="run-error-detail">
-            <summary>查看完整错误</summary>
-            <pre>{{ crawl.last_run.error }}</pre>
-          </details>
+          <p class="form-error">最近一轮：{{ shortError(crawl.last_run.error) }}</p>
         </div>
-
-        <div class="source-picker">
-          <div class="source-picker-head">
-            <div>
-              <div class="source-picker-title">本轮采集来源</div>
-              <p class="meta source-picker-hint">
-                {{ locked ? '采集运行中，来源不可改。' : '点击切换；启动后将只跑勾选的来源。' }}
-              </p>
-            </div>
-            <span class="source-count" :class="{ warn: !selectedCount }">已选 {{ selectedCount }} / {{ sourceTotal }}</span>
-          </div>
-          <div v-if="!locked" class="source-actions">
-            <button type="button" class="ghost" :disabled="!sourceTotal || selectedCount === sourceTotal" @click="selectAllSources">全选</button>
-            <button type="button" class="ghost" :disabled="!selectedCount" @click="clearSources">清空</button>
-          </div>
-          <div class="source-grid" role="group" aria-label="本轮采集来源">
-            <button
-              type="button"
-              v-for="src in sources"
-              :key="src.key"
-              class="source-card"
-              :class="{ on: selected.includes(src.key) }"
-              :disabled="locked"
-              :aria-pressed="selected.includes(src.key)"
-              @click="toggleSource(src.key)"
-            >
-              <span class="source-check" aria-hidden="true">{{ selected.includes(src.key) ? '✓' : '' }}</span>
-              <span class="source-text">
-                <strong>{{ src.label }}</strong>
-                <span class="meta mono">{{ src.key }}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>节奏</label>
-          <div class="seg">
-            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'manual' }" :disabled="locked" @click="scheduleMode = 'manual'">手动</button>
-            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'interval' }" :disabled="locked" @click="scheduleMode = 'interval'">间隔</button>
-            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'hourly' }" :disabled="locked" @click="scheduleMode = 'hourly'">每小时</button>
-            <button type="button" class="seg-btn" :class="{ on: scheduleMode === 'daily' }" :disabled="locked" @click="scheduleMode = 'daily'">每天</button>
-          </div>
-        </div>
-
-        <div class="field" v-if="scheduleMode === 'interval'">
-          <label for="news-interval">间隔分钟（≥15）</label>
-          <input id="news-interval" type="number" min="15" max="1440" v-model.number="intervalMinutes" :disabled="locked" />
-        </div>
-
-        <div class="field" v-if="scheduleMode === 'daily'">
-          <label for="daily-time">每天时刻</label>
-          <input id="daily-time" type="time" v-model="dailyTime" :disabled="locked" />
-        </div>
-
-        <p class="meta hint">新闻爬虫专用；管线同步请用下方「管线同步」分区。</p>
-
-        <div class="row">
-          <button type="button" :disabled="!canStart" @click="startCrawl">{{ actionLoading && !locked ? '启动中…' : '启动' }}</button>
-          <button type="button" class="secondary" :disabled="!locked || actionLoading" @click="stopCrawl">停止</button>
-          <button type="button" class="ghost" :disabled="actionLoading || locked" @click="reprocessPending">补跑积压</button>
-        </div>
-        <p v-if="actionError" class="form-error">{{ actionError }}</p>
-        <p v-if="reprocessMsg" class="meta">{{ reprocessMsg }}</p>
-
-        <div class="log-list">
-          <article v-for="c in crawlerLogs" :key="c.key" class="log-card">
-            <div class="log-head">
-              <strong>{{ c.name || sourceLabel(c.key) }}</strong>
-              <span class="pill" :class="statusClass(c.status)">{{ c.status ? statusLabel(c.status) : '尚无记录' }}</span>
-              <span class="meta mono">{{ c.success_count }} / {{ c.total_count }}</span>
-            </div>
-            <p v-if="c.error_message" class="form-error">{{ c.error_message }}</p>
-            <pre class="log-box">{{ c.log_text || '暂无日志' }}</pre>
-          </article>
-        </div>
-      </section>
-
-      <!-- 管线同步 -->
-      <section class="card reveal" style="margin-top:32px;--reveal-delay:140ms">
-        <div class="sec-mark"><span class="no">03</span><h3>管线同步 · 视觉抽取</h3><span class="rule"></span></div>
-        <p v-if="!visionReady" class="form-error">
-          请先在
-          <router-link to="/settings?tab=models">设置 → 大模型</router-link>
-          中配置并启用<strong>视觉模型</strong>后再同步管线。
-        </p>
-        <p v-else class="meta">视觉模型：{{ visionModel || '已就绪' }}</p>
-        <div class="field">
-          <label>来源 URL</label>
-          <input v-model="pipeSourceUrl" type="url" placeholder="https://www.simcere.com/kxcx/yggx.aspx" />
-        </div>
-        <div class="field">
-          <label>节奏</label>
-          <div class="seg">
-            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'manual' }" @click="pipeMode = 'manual'">手动</button>
-            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'interval' }" @click="pipeMode = 'interval'">间隔</button>
-            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'daily' }" @click="pipeMode = 'daily'">每天</button>
-            <button type="button" class="seg-btn" :class="{ on: pipeMode === 'weekly' }" @click="pipeMode = 'weekly'">每周</button>
-          </div>
-        </div>
-        <div class="field" v-if="pipeMode === 'interval'">
-          <label>间隔分钟（≥15）</label>
-          <input type="number" min="15" v-model.number="pipeInterval" />
-        </div>
-        <div class="field" v-if="pipeMode === 'daily' || pipeMode === 'weekly'">
-          <label>时刻</label>
-          <input type="time" v-model="pipeDailyTime" />
-        </div>
-        <div class="field" v-if="pipeMode === 'weekly'">
-          <label>星期（0=周一 … 6=周日）</label>
-          <input type="number" min="0" max="6" v-model.number="pipeWeeklyDay" />
-        </div>
-        <div class="row">
-          <button type="button" :disabled="!visionReady || pipeBusy" @click="syncPipeline(false)">
-            {{ pipeBusy ? '同步中…' : '立即同步管线' }}
+        <div class="row" v-if="crawl?.active" style="margin-bottom:12px">
+          <button type="button" class="ghost" :disabled="actionLoading" @click="abandonStuck">
+            清除卡死状态
           </button>
-          <button type="button" class="secondary" :disabled="!visionReady || pipeBusy" @click="syncPipeline(true)">强制重跑视觉</button>
-          <button type="button" class="secondary" :disabled="pipeBusy" @click="savePipeSchedule">保存调度</button>
-          <button type="button" class="ghost" :disabled="pipeBusy || !pipeRunning" @click="stopPipeSchedule">停止定时</button>
         </div>
-        <p v-if="pipeMsg" class="meta" :class="{ 'form-error': pipeErr }">{{ pipeMsg }}</p>
-        <p class="meta">定时状态：{{ pipeRunning ? `运行中（${pipeMode}）` : '未启动' }}</p>
+
+        <div class="table-wrap" v-if="crawlerProgressRows.length">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th>数据源</th><th>阶段</th><th>说明</th><th>落库</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in crawlerProgressRows" :key="row.key">
+                <td>
+                  <strong>{{ row.label }}</strong>
+                  <div class="meta mono">{{ row.key }}</div>
+                </td>
+                <td>
+                  <span class="pill" :class="stagePillClass(row.stage)">{{ row.stageLabel }}</span>
+                </td>
+                <td class="meta">{{ row.detail || '—' }}</td>
+                <td class="mono">{{ row.rawInserted != null ? row.rawInserted : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="meta">本轮尚无按源进度（未开采集或进度尚未上报）</p>
       </section>
 
-      <!-- 流水线状态 -->
       <section class="card reveal" style="margin-top:32px;--reveal-delay:160ms">
-        <div class="sec-mark"><span class="no">04</span><h3>处理流水线</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">03</span><h3>处理流水线</h3><span class="rule"></span></div>
         <div class="pipe-grid" v-if="processing">
           <div class="pipe-item">
             <span class="meta">最近处理</span>
             <strong>{{ fmt(processing.last_pipeline_at) }}</strong>
             <span class="meta mono" v-if="processing.last_pipeline_stats">
-              入库 {{ processing.last_pipeline_stats.inserted ?? 0 }} 条
+              入库 {{ processing.last_pipeline_stats.inserted ?? processing.last_pipeline_stats.raw_inserted ?? 0 }} 条
             </span>
           </div>
           <div class="pipe-item">
@@ -226,14 +105,13 @@
         <div v-else class="empty"><div class="empty-title">尚无流水线记录</div></div>
       </section>
 
-      <!-- 爬虫任务 -->
       <section class="card reveal" style="margin-top:16px;--reveal-delay:220ms">
-        <div class="sec-mark"><span class="no">05</span><h3>爬虫任务</h3><span class="rule"></span></div>
+        <div class="sec-mark"><span class="no">04</span><h3>爬虫任务</h3><span class="rule"></span></div>
         <div class="seg" style="margin-bottom:12px">
-          <button type="button" class="seg-btn" :class="{ on: taskTab === 'news' }" @click="taskTab = 'news'">新闻任务</button>
-          <button type="button" class="seg-btn" :class="{ on: taskTab === 'pipeline' }" @click="taskTab = 'pipeline'">管线任务</button>
+          <button type="button" class="seg-btn" :class="{ on: taskTab === 'news' }" @click="setTaskTab('news')">新闻任务</button>
+          <button type="button" class="seg-btn" :class="{ on: taskTab === 'pipeline' }" @click="setTaskTab('pipeline')">管线任务</button>
         </div>
-        <div class="table-wrap" v-if="filteredTasks.length">
+        <div class="table-wrap" v-if="pagedTasks.length">
           <table class="task-table">
             <thead>
               <tr>
@@ -241,7 +119,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in filteredTasks" :key="t.id">
+              <tr v-for="t in pagedTasks" :key="t.id">
                 <td class="mono">{{ t.crawler_name }}</td>
                 <td>
                   <span class="pill" :class="statusClass(t.status)">{{ statusLabel(t.status) }}</span>
@@ -251,6 +129,11 @@
               </tr>
             </tbody>
           </table>
+          <div class="row task-pager" v-if="taskTotal > taskPageSize">
+            <button type="button" class="secondary" :disabled="taskPage <= 1" @click="taskPage -= 1">上一页</button>
+            <span class="meta">第 {{ taskPage }} 页 · 共 {{ taskTotal }} 条</span>
+            <button type="button" class="secondary" :disabled="taskPage >= taskTotalPages" @click="taskPage += 1">下一页</button>
+          </div>
         </div>
         <div v-else-if="!loading" class="empty">
           <div class="empty-title">暂无任务记录</div>
@@ -262,61 +145,86 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { useAsync } from '../composables'
-import { crawlerLabel, crawlerSources, formatTime } from '../format'
+import { crawlerLabel, formatTime } from '../format'
 
 const health = ref(null)
 const processing = ref(null)
 const tasks = ref([])
-const { loading, error, run } = useAsync()
-
 const crawl = ref(null)
-const scheduleMode = ref('hourly')
-const dailyTime = ref('08:00')
-const intervalMinutes = ref(60)
-const selected = ref(['bioon', 'globenewswire', 'prnewswire', 'pharmcube'])
-const formSynced = ref(false)
-const actionError = ref('')
+const { loading, error, run } = useAsync()
 const actionLoading = ref(false)
-const reprocessMsg = ref('')
+const actionError = ref('')
 const taskTab = ref('news')
-const visionReady = ref(false)
-const visionModel = ref('')
-const pipeSourceUrl = ref('https://www.simcere.com/kxcx/yggx.aspx')
-const pipeMode = ref('manual')
-const pipeInterval = ref(60)
-const pipeDailyTime = ref('08:00')
-const pipeWeeklyDay = ref(0)
-const pipeRunning = ref(false)
-const pipeBusy = ref(false)
-const pipeMsg = ref('')
-const pipeErr = ref(false)
+const taskPage = ref(1)
+const taskPageSize = 10
 let pollTimer = 0
 
-const STAGE_ORDER = [
-  { key: 'crawling', label: '爬取' },
-  { key: 'filtering', label: '过滤' },
-  { key: 'persist', label: '落库' },
-  { key: 'reprocess', label: '补跑' },
-  { key: 'relevance', label: '相关性' },
-  { key: 'summary', label: '摘要' },
-  { key: 'embedding', label: '向量' },
-  { key: 'clustering', label: '聚类' },
-  { key: 'done', label: '完成' },
-]
+const STAGE_LABELS = {
+  crawling: '爬取中',
+  filtering: '过滤',
+  persist: '落库',
+  reprocess: '补跑',
+  relevance: '相关性',
+  summary: '摘要',
+  embedding: '向量',
+  clustering: '聚类',
+  done: '完成',
+  failed: '失败',
+  running: '进行中',
+}
+
+function setTaskTab(tab) {
+  taskTab.value = tab
+  taskPage.value = 1
+}
 
 const checked = computed(() => health.value !== null)
-const locked = computed(() => Boolean(crawl.value?.running))
-const llmReady = computed(() => crawl.value?.llm_ready !== false)
-const canStart = computed(() => {
-  if (locked.value || actionLoading.value) return false
-  if (!llmReady.value) return false
-  if (!selected.value.length) return false
-  if (scheduleMode.value === 'daily' && !dailyTime.value) return false
-  if (scheduleMode.value === 'interval' && Number(intervalMinutes.value) < 15) return false
-  return true
+
+const progressRaw = computed(() => crawl.value?.progress || crawl.value?.last_run?.progress || null)
+
+const phaseLabel = computed(() => {
+  if (crawl.value?.active) {
+    const stage = progressRaw.value?.round?.stage || progressRaw.value?.stage
+    if (stage === 'clustering') return '聚类中'
+    return '本轮进行中'
+  }
+  if (crawl.value?.running) return '调度已启动'
+  return '调度未启动'
+})
+const phaseClass = computed(() => {
+  if (crawl.value?.active) return 'warn'
+  if (crawl.value?.running) return 'ok'
+  return ''
+})
+const roundDetail = computed(() => {
+  const p = progressRaw.value
+  if (!p) return ''
+  const r = p.round || {}
+  const done = r.crawlers_done ?? p.crawlers_done
+  const total = r.crawlers_total ?? p.crawlers_total
+  if (total != null) return `进度 ${done ?? 0}/${total}`
+  return r.detail || p.detail || ''
+})
+
+const crawlerProgressRows = computed(() => {
+  const p = progressRaw.value
+  const by = p?.by_crawler
+  if (!by || typeof by !== 'object') return []
+  return Object.keys(by).sort().map((key) => {
+    const row = by[key] || {}
+    const stage = row.stage || ''
+    return {
+      key,
+      label: crawlerLabel(key) || key,
+      stage,
+      stageLabel: STAGE_LABELS[stage] || row.label || stage || '—',
+      detail: row.detail || row.label || '',
+      rawInserted: row.raw_inserted,
+    }
+  })
 })
 
 const filteredTasks = computed(() => {
@@ -326,65 +234,15 @@ const filteredTasks = computed(() => {
   }
   return rows.filter((t) => !String(t.crawler_name || '').includes('pipeline'))
 })
-const phaseLabel = computed(() => {
-  if (crawl.value?.active) return '本轮进行中'
-  if (crawl.value?.running) return '运行中'
-  return '未启动'
+const taskTotal = computed(() => filteredTasks.value.length)
+const taskTotalPages = computed(() => Math.max(1, Math.ceil(taskTotal.value / taskPageSize)))
+const pagedTasks = computed(() => {
+  const start = (taskPage.value - 1) * taskPageSize
+  return filteredTasks.value.slice(start, start + taskPageSize)
 })
-const phaseClass = computed(() => {
-  if (crawl.value?.active) return 'warn'
-  if (crawl.value?.running) return 'ok'
-  return ''
+watch(taskTotalPages, (pages) => {
+  if (taskPage.value > pages) taskPage.value = pages
 })
-const progressRaw = computed(() => crawl.value?.progress || crawl.value?.last_run?.progress || null)
-const progressView = computed(() => {
-  const p = progressRaw.value
-  if (!p || !crawl.value?.active) return null
-  const done = Number(p.crawlers_done || 0)
-  const total = Number(p.crawlers_total || 0)
-  const stage = p.stage || 'crawling'
-  const idx = STAGE_ORDER.findIndex((s) => s.key === stage)
-  let pct = idx >= 0 ? Math.round(((idx + 1) / STAGE_ORDER.length) * 100) : 8
-  if (stage === 'crawling' && total > 0) {
-    pct = Math.max(8, Math.round((done / Math.max(total, 1)) * 40))
-  }
-  if (stage === 'done') pct = 100
-  return {
-    label: p.label || stage,
-    detail: p.detail || '',
-    pct: Math.min(100, Math.max(5, pct)),
-    crawlerText: total ? `爬虫 ${done}/${total}` : '',
-    counts: [
-      p.items_in != null ? `输入 ${p.items_in}` : '',
-      p.items_out != null ? `输出 ${p.items_out}` : '',
-      p.raw_inserted != null ? `落库 ${p.raw_inserted}` : '',
-    ].filter(Boolean).join(' · '),
-  }
-})
-const progressStages = computed(() => {
-  const p = progressRaw.value
-  const stage = p?.stage || ''
-  const idx = STAGE_ORDER.findIndex((s) => s.key === stage)
-  return STAGE_ORDER
-    .filter((s) => s.key !== 'reprocess' || stage === 'reprocess')
-    .map((s) => {
-      const orderIdx = STAGE_ORDER.findIndex((x) => x.key === s.key)
-      return {
-        key: s.key,
-        label: s.label,
-        on: s.key === stage,
-        done: idx >= 0 && orderIdx >= 0 && orderIdx < idx,
-      }
-    })
-})
-const sources = computed(() => {
-  const rows = crawl.value?.available
-  if (rows?.length) return rows.map((row) => ({ key: row.key, label: row.name }))
-  return crawlerSources.value
-})
-const sourceTotal = computed(() => sources.value.length)
-const selectedCount = computed(() => selected.value.filter((key) => sources.value.some((s) => s.key === key)).length)
-const crawlerLogs = computed(() => crawl.value?.crawlers || [])
 
 const healthRows = computed(() => {
   const c = health.value?.checks || {}
@@ -417,10 +275,15 @@ const healthRows = computed(() => {
   ]
 })
 
-const statusLabel = (s) => ({ success: '成功', running: '运行中', failed: '失败' }[s] || s)
-const statusClass = (s) => ({ success: 'ok', running: 'warn', failed: 'danger' }[s] || '')
+const statusLabel = (s) => ({ success: '成功', running: '运行中', failed: '失败', aborted: '已中断' }[s] || s)
+const statusClass = (s) => ({ success: 'ok', running: 'warn', failed: 'danger', aborted: 'danger' }[s] || '')
+const stagePillClass = (stage) => {
+  if (stage === 'done') return 'ok'
+  if (stage === 'failed') return 'danger'
+  if (stage) return 'warn'
+  return ''
+}
 const fmt = (v) => (v ? formatTime(v) : '尚未执行')
-const sourceLabel = (key) => crawlerLabel(key)
 
 function shortError(text) {
   const raw = String(text || '').trim()
@@ -438,133 +301,6 @@ function formatNext(value) {
   return d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-function applyConfig(cfg) {
-  if (!cfg) return
-  scheduleMode.value = cfg.schedule_mode || 'hourly'
-  dailyTime.value = cfg.daily_time || '08:00'
-  intervalMinutes.value = cfg.interval_minutes || 60
-  const availableKeys = new Set(sources.value.map((item) => item.key))
-  if (cfg.crawler_keys?.length) {
-    // 只保留当前可选（已启用）源，避免进度分母含已禁用但仍写在配置里的 key
-    selected.value = cfg.crawler_keys.filter((key) => availableKeys.has(key))
-  } else if (!cfg.running) {
-    selected.value = sources.value.map((item) => item.key)
-  }
-}
-
-function applyPipeConfig(cfg) {
-  if (!cfg) return
-  pipeRunning.value = Boolean(cfg.running)
-  pipeMode.value = cfg.schedule_mode || 'manual'
-  pipeInterval.value = cfg.interval_minutes || 60
-  pipeDailyTime.value = cfg.daily_time || '08:00'
-  pipeWeeklyDay.value = cfg.weekly_day ?? 0
-  if (cfg.source_url) pipeSourceUrl.value = cfg.source_url
-}
-
-async function loadVisionAndPipe() {
-  try {
-    const [vs, cfg] = await Promise.all([
-      api.pipelineVisionStatus(),
-      api.pipelineCrawlConfig().catch(() => null),
-    ])
-    visionReady.value = Boolean(vs?.ready)
-    visionModel.value = vs?.model || ''
-    if (!vs?.ready && vs?.message) {
-      pipeMsg.value = vs.message
-      pipeErr.value = true
-    }
-    applyPipeConfig(cfg)
-  } catch (e) {
-    visionReady.value = false
-    pipeMsg.value = e.message || '无法读取管线配置'
-    pipeErr.value = true
-  }
-}
-
-async function syncPipeline(force) {
-  pipeBusy.value = true
-  pipeMsg.value = ''
-  pipeErr.value = false
-  try {
-    if (!visionReady.value) {
-      throw new Error('请先在设置 → 大模型中配置并启用视觉模型')
-    }
-    const data = await api.pipelineSync({
-      force: Boolean(force),
-      source_url: pipeSourceUrl.value || undefined,
-    })
-    pipeMsg.value = data?.skipped
-      ? '图片未变化，已跳过视觉抽取'
-      : `同步完成：新建 ${data?.stats?.created ?? 0} · 更新 ${data?.stats?.updated ?? 0} · 消失 ${data?.stats?.removed ?? 0}`
-    await load()
-  } catch (e) {
-    pipeErr.value = true
-    const detail = e.detail
-    pipeMsg.value = (typeof detail === 'object' && detail?.message) || e.message || '同步失败'
-  } finally {
-    pipeBusy.value = false
-  }
-}
-
-async function savePipeSchedule() {
-  pipeBusy.value = true
-  pipeMsg.value = ''
-  pipeErr.value = false
-  try {
-    if (!visionReady.value && pipeMode.value !== 'manual') {
-      throw new Error('启用定时前请先配置视觉模型')
-    }
-    const data = await api.updatePipelineCrawlConfig({
-      running: pipeMode.value !== 'manual',
-      schedule_mode: pipeMode.value,
-      interval_minutes: pipeInterval.value,
-      daily_time: pipeDailyTime.value,
-      weekly_day: pipeWeeklyDay.value,
-      source_url: pipeSourceUrl.value,
-      crawler_keys: ['simcere_pipeline'],
-    })
-    applyPipeConfig(data)
-    pipeMsg.value = '管线调度已保存'
-  } catch (e) {
-    pipeErr.value = true
-    pipeMsg.value = e.message || '保存失败'
-  } finally {
-    pipeBusy.value = false
-  }
-}
-
-async function stopPipeSchedule() {
-  pipeBusy.value = true
-  try {
-    const data = await api.updatePipelineCrawlConfig({ running: false, schedule_mode: 'manual' })
-    applyPipeConfig(data)
-    pipeMsg.value = '已停止管线定时'
-    pipeErr.value = false
-  } catch (e) {
-    pipeErr.value = true
-    pipeMsg.value = e.message || '停止失败'
-  } finally {
-    pipeBusy.value = false
-  }
-}
-
-function toggleSource(key) {
-  if (locked.value) return
-  if (selected.value.includes(key)) selected.value = selected.value.filter((item) => item !== key)
-  else selected.value = [...selected.value, key]
-}
-
-function selectAllSources() {
-  if (locked.value) return
-  selected.value = sources.value.map((item) => item.key)
-}
-
-function clearSources() {
-  if (locked.value) return
-  selected.value = []
-}
-
 async function refreshQuiet() {
   try {
     const [data, status] = await Promise.all([api.monitor(), api.crawlStatus()])
@@ -574,10 +310,6 @@ async function refreshQuiet() {
       tasks.value = data.crawler_tasks || []
     }
     crawl.value = status
-    if (!formSynced.value || status?.running) {
-      applyConfig(status)
-      formSynced.value = true
-    }
   } catch {
     /* 轮询失败时保留当前页面 */
   }
@@ -591,69 +323,19 @@ async function load() {
     tasks.value = data.crawler_tasks || []
   }
   try {
-    const status = await api.crawlStatus()
-    crawl.value = status
-    if (!formSynced.value || status?.running) {
-      applyConfig(status)
-      formSynced.value = true
-    }
+    crawl.value = await api.crawlStatus()
   } catch (e) {
     actionError.value = e.message || '采集状态不可用'
   }
-  await loadVisionAndPipe()
 }
 
-async function startCrawl() {
-  actionError.value = ''
-  if (!llmReady.value) {
-    actionError.value = crawl.value?.llm_message || '尚未配置 LLM，请先到「系统设置」配置大模型'
-    return
-  }
+async function abandonStuck() {
   actionLoading.value = true
   try {
-    const availableKeys = new Set(sources.value.map((item) => item.key))
-    const status = await api.crawlStart({
-      schedule_mode: scheduleMode.value,
-      daily_time: scheduleMode.value === 'daily' ? dailyTime.value : null,
-      interval_minutes: scheduleMode.value === 'interval' ? intervalMinutes.value : null,
-      crawler_keys: selected.value.filter((key) => availableKeys.has(key)),
-    })
-    crawl.value = status
-    applyConfig(status)
-    formSynced.value = true
+    crawl.value = await api.crawlAbandon()
     await refreshQuiet()
   } catch (e) {
-    actionError.value = e.message || '启动失败'
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-async function stopCrawl() {
-  actionError.value = ''
-  actionLoading.value = true
-  try {
-    const status = await api.crawlStop()
-    crawl.value = status
-    applyConfig(status)
-    formSynced.value = true
-  } catch (e) {
-    actionError.value = e.message || '停止失败'
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-async function reprocessPending() {
-  actionError.value = ''
-  reprocessMsg.value = ''
-  actionLoading.value = true
-  try {
-    const stats = await api.crawlReprocess(50)
-    reprocessMsg.value = `补跑完成：捞取 ${stats.pending ?? 0} 条，ready ${stats.ready_updated ?? stats.after_embedding ?? 0}`
-    await refreshQuiet()
-  } catch (e) {
-    actionError.value = e.message || '补跑失败'
+    actionError.value = e.message || '清除失败'
   } finally {
     actionLoading.value = false
   }
@@ -677,28 +359,15 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
 
 <style scoped>
-.head-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: var(--sp-4);
-}
-.head-row .ed-lede {
-  max-width: none;
-  white-space: nowrap;
-}
-
 .health-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .health-card { padding: var(--sp-4) var(--sp-5); }
 .health-head { display: flex; align-items: center; gap: var(--sp-2); }
 .health-name { font-size: var(--fs-xs); color: var(--ink-mute); letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; }
 .health-value { font-family: var(--font-serif); font-size: clamp(22px, 2.6vw, 30px); font-weight: 700; color: var(--pine); margin: 8px 0 2px; }
-.dot {
-  width: 9px; height: 9px; border-radius: 50%; flex: none;
-}
-.dot.ok   { background: var(--moss);  animation: blink 2.4s ease-in-out infinite; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot.ok { background: var(--moss); animation: blink 2.4s ease-in-out infinite; }
 .dot.warn { background: var(--brass); }
-.dot.bad  { background: var(--clay); }
+.dot.bad { background: var(--clay); }
 @keyframes blink { 50% { opacity: 0.35; } }
 
 .pipe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
@@ -725,60 +394,12 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 .task-table td {
   padding: var(--sp-3);
   border-bottom: 1px solid var(--line);
+  vertical-align: top;
 }
-.task-table tbody tr { transition: background var(--dur-fast); }
 .task-table tbody tr:hover { background: var(--wash); }
 .task-table tbody tr:last-child td { border-bottom: none; }
 
 .crawl-status { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 16px; }
-.progress-panel {
-  margin: 0 0 18px;
-  padding: 12px 14px;
-  background: var(--wash);
-  border-radius: var(--r-md);
-}
-.progress-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: baseline;
-  margin-bottom: 10px;
-}
-.progress-head strong { font-family: var(--font-serif); font-size: var(--fs-h2); color: var(--pine); }
-.progress-track {
-  height: 8px;
-  background: color-mix(in srgb, var(--pine) 12%, var(--paper));
-  border-radius: 999px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--pine);
-  border-radius: 999px;
-  transition: width 0.35s ease;
-}
-.progress-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
-.progress-stages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-}
-.progress-stages li {
-  font-size: var(--fs-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 700;
-  color: var(--ink-mute);
-  padding: 4px 8px;
-  border-radius: var(--r-sm);
-}
-.progress-stages li.done { color: var(--moss); background: color-mix(in srgb, var(--moss) 12%, transparent); }
-.progress-stages li.on { color: var(--paper); background: var(--pine); }
-.field { margin-bottom: 16px; }
-.field label { display: block; font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); font-weight: 700; margin-bottom: 8px; }
 .seg { display: flex; flex-wrap: wrap; gap: 8px; }
 .seg-btn {
   background: transparent;
@@ -786,164 +407,13 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   padding: 8px 14px;
 }
 .seg-btn.on { background: var(--pine); color: var(--paper); }
-.source-picker {
-  margin: 0 0 20px;
-  padding: 14px 16px;
-  background: var(--wash);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-}
-.source-picker-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.source-picker-title {
-  font-family: var(--font-serif);
-  font-size: var(--fs-h2);
-  color: var(--pine);
-  font-weight: 700;
-}
-.source-picker-hint { margin: 4px 0 0; }
-.source-count {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--pine);
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--pine) 10%, transparent);
-}
-.source-count.warn {
-  color: var(--clay);
-  background: color-mix(in srgb, var(--clay) 10%, transparent);
-}
-.source-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.source-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-}
-.source-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  text-align: left;
-  padding: 12px 12px;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
-}
-.source-card:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--pine) 45%, var(--line));
-  box-shadow: none;
-}
-.source-card.on {
-  border-color: var(--pine);
-  background: color-mix(in srgb, var(--pine) 8%, var(--paper));
-}
-.source-card:disabled {
-  cursor: not-allowed;
-  opacity: 0.85;
-}
-.source-check {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  margin-top: 1px;
-  border: 1.5px solid var(--line);
-  border-radius: 4px;
-  display: inline-flex;
+.task-pager {
+  margin-top: 12px;
+  justify-content: flex-end;
   align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-  color: var(--paper);
-  background: transparent;
+  gap: 12px;
 }
-.source-card.on .source-check {
-  border-color: var(--pine);
-  background: var(--pine);
-}
-.source-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.source-text strong {
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--ink);
-}
-.source-card.on .source-text strong { color: var(--pine); }
-.hint { margin: 0 0 16px; }
 .form-error { color: var(--clay); margin: 8px 0; }
-.run-error { margin: 0 0 16px; }
-.run-error .form-error { margin: 0; }
-.run-error-detail {
-  margin-top: 8px;
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-}
-.run-error-detail summary { cursor: pointer; color: var(--pine); font-weight: 650; }
-.run-error-detail pre {
-  margin: 8px 0 0;
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.45;
-  background: var(--wash);
-  color: var(--ink);
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-}
-.llm-gate {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--clay) 8%, var(--paper));
-  border-radius: var(--r-md);
-}
-.llm-gate .form-error { margin: 0; }
-.llm-gate-link {
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--pine);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.log-list { display: grid; gap: 12px; margin-top: 20px; }
-.log-card { border-top: 1px solid var(--line); padding-top: 12px; }
-.log-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-.log-box {
-  margin: 8px 0 0;
-  max-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  background: var(--wash);
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-}
+.run-error { margin: 0 0 12px; }
+.ed-lede a { color: var(--pine); font-weight: 650; }
 </style>

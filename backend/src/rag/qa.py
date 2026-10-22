@@ -43,9 +43,12 @@ def _resolve_conversation_id(
     return (conversation_id or session_id or "").strip() or None
 
 
-def _resolve_top_k(top_k: Optional[int] = None) -> int:
+def _resolve_rag_knobs(top_k: Optional[int] = None):
+    """返回 (top_k, pool_k, history_turns, temperature)。top_k 参数已废弃，忽略。"""
     settings = load_rag_settings()
-    return settings.top_k
+    k = settings.top_k
+    pool = k * settings.rerank_pool_multiplier
+    return k, pool, settings.history_turns, settings.temperature
 
 
 def _load_page_pin(session, news_id: Optional[int]) -> Optional[Hit]:
@@ -219,7 +222,7 @@ async def ask_stream(
     事件顺序：
     stage* → (clarify + done) | (meta → stage generate → token* → done)
     """
-    resolved_k = _resolve_top_k(top_k)
+    resolved_k, pool_k, history_turns, temperature = _resolve_rag_knobs(top_k)
     cid_hint = _resolve_conversation_id(
         conversation_id=conversation_id, session_id=session_id
     )
@@ -228,7 +231,9 @@ async def ask_stream(
             session, user_id=user_id, conversation_id=cid_hint
         )
         cid = conv.id
-        history = get_history_messages(session, conversation_id=cid, limit=40)
+        history = get_history_messages(
+            session, conversation_id=cid, limit=history_turns
+        )
         pinned = _load_page_pin(session, news_id)
         page_news_id = pinned[0].id if pinned else None
         intent = classify_intent(query)
@@ -244,7 +249,11 @@ async def ask_stream(
             yield _stage("generate", intent=intent.intent.value, news_id=page_news_id)
             parts: List[str] = []
             async for piece in generate_answer_stream(
-                query, [], history=history, intent=intent
+                query,
+                [],
+                history=history,
+                intent=intent,
+                temperature=temperature,
             ):
                 parts.append(piece)
                 yield {"type": "token", "content": piece}
@@ -295,7 +304,7 @@ async def ask_stream(
             intent=intent.intent.value,
             news_id=page_news_id,
         )
-        raw_hits = await retrieve_hits(session, search_query, top_k=resolved_k * 2)
+        raw_hits = await retrieve_hits(session, search_query, top_k=pool_k)
         yield _stage(
             "rerank",
             intent=intent.intent.value,
@@ -314,7 +323,11 @@ async def ask_stream(
             )
             yield _stage("rewrite", intent=intent.intent.value)
             rewritten = await rewrite_query(
-                query, history=history, intent=intent, empty_retry=True
+                query,
+                history=history,
+                intent=intent,
+                empty_retry=True,
+                temperature=temperature,
             )
             search_query = rewritten.search_query or query
             if rewritten.need_clarify and rewritten.clarify_question:
@@ -329,7 +342,7 @@ async def ask_stream(
                 search_query=search_query,
             )
             raw_hits = await retrieve_hits(
-                session, search_query, top_k=resolved_k * 2
+                session, search_query, top_k=pool_k
             )
             yield _stage(
                 "rerank",
@@ -354,7 +367,11 @@ async def ask_stream(
                 news_id=page_news_id,
             )
             rewritten = await rewrite_query(
-                query, history=history, intent=intent, empty_retry=True
+                query,
+                history=history,
+                intent=intent,
+                empty_retry=True,
+                temperature=temperature,
             )
             search_query = rewritten.search_query or query
             if not (rewritten.need_clarify and rewritten.clarify_question):
@@ -366,7 +383,7 @@ async def ask_stream(
                     news_id=page_news_id,
                 )
                 raw_hits = await retrieve_hits(
-                    session, search_query, top_k=resolved_k * 2
+                    session, search_query, top_k=pool_k
                 )
                 yield _stage(
                     "rerank",
@@ -384,7 +401,10 @@ async def ask_stream(
 
         if not _hits_ok(hits):
             question = await clarify_after_empty(
-                query, history=history, search_query=search_query
+                query,
+                history=history,
+                search_query=search_query,
+                temperature=temperature,
             )
             async for ev in _emit_clarify(question, search_query):
                 yield ev
@@ -413,6 +433,7 @@ async def ask_stream(
             history=history,
             intent=intent,
             page_news_id=page_news_id,
+            temperature=temperature,
         ):
             parts.append(piece)
             yield {"type": "token", "content": piece}

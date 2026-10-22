@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { api } from '../api'
+import { STAGE_FILTER_OPTIONS } from '../pipelineStages'
 
 const state = reactive({
   q: '',
@@ -11,7 +12,7 @@ const state = reactive({
   watchedOnly: false,
   marketedOnly: false,
   page: 1,
-  pageSize: 30,
+  pageSize: 10,
 })
 
 const facets = ref({
@@ -22,17 +23,10 @@ const facets = ref({
   stages: [],
 })
 
-/** 筛选变更计数，列表页 watch 后 reload */
+/** 筛选变更计数，列表页 watch 后全量 reload；翻页在前端本地切片，不 bump */
 const revision = ref(0)
 
-const STAGE_OPTIONS = [
-  { value: 'preclinical', label: '临床前' },
-  { value: 'phase1', label: 'I 期' },
-  { value: 'phase2', label: 'II 期' },
-  { value: 'phase3', label: 'III 期' },
-  { value: 'nda', label: '申报' },
-  { value: 'approved', label: '已上市' },
-]
+const STAGE_OPTIONS = STAGE_FILTER_OPTIONS
 
 function bump() {
   revision.value += 1
@@ -86,8 +80,7 @@ function setModality(v) {
 }
 
 function setPage(p) {
-  state.page = p
-  bump()
+  state.page = Math.max(1, Number(p) || 1)
 }
 
 function onMarketedToggle() {

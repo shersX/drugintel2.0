@@ -18,6 +18,10 @@ class AskRequest(BaseModel):
 class RagConfigUpdate(BaseModel):
     top_k: int = Field(10, ge=1, le=50)
     min_relevance_score: float = Field(0.25, ge=0.0, le=1.0)
+    hybrid_vector_weight: float = Field(0.6, ge=0.0, le=1.0)
+    rerank_pool_multiplier: int = Field(2, ge=1, le=5)
+    history_turns: int = Field(12, ge=1, le=40)
+    temperature: float = Field(0.3, ge=0.0, le=2.0)
 
 
 class CrawlerSettingUpdate(BaseModel):
