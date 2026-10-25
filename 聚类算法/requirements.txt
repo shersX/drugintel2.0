@@ -1,0 +1,6 @@
+numpy
+aiohttp
+python-dotenv
+feedparser
+openai
+scikit-learn

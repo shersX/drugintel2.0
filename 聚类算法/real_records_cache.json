@@ -1,0 +1,1065 @@
+[
+  {
+    "id": "https://news.bioon.com/article/f2729564252a.html",
+    "title": "Sci Adv：南京农业大学钱国良等团队发现T4SS不只会杀细菌，还能打真菌",
+    "summary": "南京农业大学钱国良团队在Science Advances发表研究，发现产酶溶杆菌的杀菌型T4SS（T4SS BK）通过递送脱氧核糖核酸酶效应物LtdD抑制多种真菌生长，揭示其跨界抗真菌功能，为工程化DNA抗真菌疗法提供蓝图。",
+    "ts": 1792223160.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "nanjing agricultural university"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/535e9555016e.html",
+    "title": "Cell子刊：甘勇团队开发口服纳米平台，同时“喂养”肠道菌、“关闭”免疫抑制开关",
+    "summary": "中国科学院上海药物研究所甘勇团队在Cell子刊发表研究，开发口服酶响应性纳米平台共递送色氨酸和NLG919，重编程肠道微生物-宿主色氨酸代谢，增强结直肠癌免疫治疗。",
+    "ts": 1792221060.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [
+      "nlg919",
+      "tryptophan"
+    ],
+    "orgs": [
+      "shanghai institute of materia medica, chinese academy of sciences"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/d5d495534eb0.html",
+    "title": "Adv Sci：空军军医大学张瑞/杨安钢发现吉西他滨逼出乳酸，用表观开关把核糖体蛋白变耐药双引擎",
+    "summary": "空军军医大学张瑞/杨安钢等团队在Advanced Science发表研究，发现吉西他滨诱导乳酸蓄积通过H3K18la表观修饰上调RPL11，驱动胰腺导管腺癌化疗耐药，抑制乳酸生成或RPL11表达可逆转耐药。",
+    "ts": 1792219080.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [
+      "gemcitabine"
+    ],
+    "orgs": [
+      "air force medical university",
+      "xinxiang medical university"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/6542955346a0.html",
+    "title": "Sci Adv：心梗后巨噬细胞“代谢刹车”：徐州医科大学邓晓然等发现勒住ENO1即换抗炎修复档",
+    "summary": "徐州医科大学邓晓然等研究发现烯醇化酶1（ENO1）是心梗后巨噬细胞代谢检查点，通过酸响应性纳米载体递送siENO1抑制糖酵解，促进抗炎修复，改善心脏功能。",
+    "ts": 1792218420.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [
+      "sieno1"
+    ],
+    "orgs": [
+      "xuzhou medical university"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/704b9553452e.html",
+    "title": "Blood：上海交通大学徐艳艳等合作揭示甲羟戊酸代谢调控血小板活化与感染性血栓形成",
+    "summary": "上海交通大学徐艳艳等团队在Blood发表研究，揭示甲羟戊酸代谢通过蛋白质异戊二烯化调控血小板活化与脓毒症血栓形成，并筛选出小分子抑制剂TH-Z145和TH-Z93，为脓毒症治疗提供新靶点。",
+    "ts": 1792215180.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [
+      "th-z93",
+      "th-z145"
+    ],
+    "orgs": [
+      "shanghai jiao tong university",
+      "ruijin hospital"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/a58a955344b7.html",
+    "title": "Cancer Res：耐药不只在癌细胞：清华大学陈晔光等发现PLAU⁺基质用趋化因子“训练”肿瘤抗药",
+    "summary": "清华大学陈晔光等研究发现PLAU⁺成纤维细胞通过CXCL5上调肿瘤细胞中CLGN，驱动肺腺癌化疗耐药，提示抑制CLGN可能是克服耐药的治疗策略。该研究建立了患者来源的LUAD类器官与配对癌症相关成纤维细胞生物库。",
+    "ts": 1792214700.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "tsinghua university",
+      "nanchang university"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/7c2c955343a9.html",
+    "title": "Nature：前列腺癌为何会“变身”耐药？潘滔等发现发现一个被忽视的 tRNA 开关",
+    "summary": "华盛顿大学和芝加哥大学合作研究发现tRNA Arg (UCU)下调会促进前列腺癌从AR依赖转向神经内分泌分化并导致对AR通路抑制剂耐药，恢复其表达可恢复敏感性，为耐药干预提供新靶点。",
+    "ts": 1792208580.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "university of washington",
+      "university of chicago"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/e17a955309dd.html",
+    "title": "“看人”下菜！《Cell》发现植物按pH选香豆素，借细菌古老机制解铁困",
+    "summary": "马克斯·普朗克植物育种研究所团队在《Cell》发表研究，发现拟南芥根据土壤pH分泌不同香豆素（fraxetin和sideretin），分别招募根际细菌通过螯合或还原机制获取铁，揭示植物-微生物-土壤三方协同的铁获取策略。",
+    "ts": 1792206420.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "max planck institute for plant breeding research"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/cf4b95530818.html",
+    "title": "Sci Adv：周琪/张松灵/王鑫开发叶酸受体靶向 NIR-II 探针：让卵巢癌腹腔转移的\"隐形\"微小病灶在术中现形",
+    "summary": "周琪、张松灵和王鑫团队在Science Advances发表研究，开发了叶酸受体靶向的NIR-II成像探针，用于卵巢癌腹腔转移灶的术中精准可视化，相比临床探针OTL38具有更高灵敏度。",
+    "ts": 1792205280.0,
+    "src": "bioon",
+    "event_type": "clinical",
+    "drugs": [
+      "otl38"
+    ],
+    "orgs": [
+      "jilin university",
+      "chinese academy of sciences"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/74ac95530efd.html",
+    "title": "PNAS：刘珈泉/陈玲玲发现串联RNA结合域能形成确定构型，分子内界面是PKR激活钥匙",
+    "summary": "中国科学院上海生物化学与细胞生物学研究所刘珈泉和陈玲玲在PNAS发表研究，揭示蛋白激酶R（PKR）的串联RNA结合结构域通过分子内界面形成独特架构，对PKR激活至关重要。",
+    "ts": 1792203600.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "shanghai institute of biochemistry and cell biology, chinese academy of sciences"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/85639553061a.html",
+    "title": "Science：线粒体融合还是分裂？高尔基脂质一锤定音",
+    "summary": "剑桥大学Julien Prudent团队在Science发表研究，发现高尔基体来源的PI(3,4)P2阳性囊泡通过PI3K-C2α/β促进线粒体融合，缺失导致心肌线粒体碎片化和心脏缺陷，为线粒体动态调控提供新靶点。",
+    "ts": 1792201560.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "university of cambridge"
+    ]
+  },
+  {
+    "id": "https://news.bioon.com/article/1e49955305e2.html",
+    "title": "肿瘤未现，免疫先起波澜！《Nature》发现特定调节性T细胞在癌前病变中构建免疫抑制网络，靶向PI3Kδ可恢复免疫监视、拦截肺鳞癌发生",
+    "summary": "伦敦大学学院团队在《自然》发表研究，发现癌前病变中效应调节性T细胞构建免疫抑制网络，靶向PI3Kδ可恢复免疫监视、拦截肺鳞癌发生。",
+    "ts": 1792199760.0,
+    "src": "bioon",
+    "event_type": "other",
+    "drugs": [
+      "pi3kδ inhibitor"
+    ],
+    "orgs": [
+      "university college london"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/17/3382883/0/fr/transcon-cnp-navepegritide-administr%c3%a9-une-fois-par-semaine-re%c3%a7oit-un-avis-favorable-du-chmp-dans-le-traitement-de-l-achondroplasie-chez-l-enfant.html",
+    "title": "TransCon® CNP (navepegritide), administré une fois par semaine, reçoit un avis favorable du CHMP dans le traitement de l’achondroplasie chez l’enfant",
+    "summary": "Ascendis Pharma的每周一次TransCon CNP (navepegritide)获得欧洲药品管理局人用药品委员会(CHMP)积极意见，推荐欧盟批准用于治疗2岁及以上儿童软骨发育不全，欧盟委员会最终决定预计2026年第四季度公布。",
+    "ts": 1792245120.0,
+    "src": "globenewswire",
+    "event_type": "approval",
+    "drugs": [
+      "navepegritide"
+    ],
+    "orgs": [
+      "ascendis pharma"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/17/3382883/0/de/transcon-cnp-navepegritid-einmal-w%c3%b6chentlich-erh%c3%a4lt-eine-positive-bewertung-des-chmp-f%c3%bcr-die-behandlung-von-achondroplasie-bei-kindern.html",
+    "title": "TransCon® CNP (Navepegritid), einmal wöchentlich, erhält eine positive Bewertung des CHMP für die Behandlung von Achondroplasie bei Kindern",
+    "summary": "Ascendis Pharma的每周一次TransCon CNP（Navepegritid）获得欧洲药品管理局CHMP积极评价，推荐欧盟批准用于治疗儿童软骨发育不全，最终决定预计2026年第四季度。",
+    "ts": 1792245120.0,
+    "src": "globenewswire",
+    "event_type": "approval",
+    "drugs": [
+      "navepegritid"
+    ],
+    "orgs": [
+      "ascendis pharma"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382822/0/en/annexon-reports-inducement-grants-to-new-employees-under-nasdaq-listing-rule-5635-c-4.html",
+    "title": "Annexon Reports Inducement Grants to New Employees Under Nasdaq Listing Rule 5635(c)(4)",
+    "summary": "Annexon, Inc.根据纳斯达克上市规则5635(c)(4)，向六名新非执行员工授予总计1,270,000股普通股期权，行权价每股3.60美元。",
+    "ts": 1792186440.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "annexon, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382821/0/en/avicanna-transitions-us-listing-to-otcqb.html",
+    "title": "Avicanna Transitions US Listing to OTCQB",
+    "summary": "Avicanna Inc.宣布其美国上市将从OTCQB市场转移，自2026年10月16日起生效。",
+    "ts": 1792186200.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "avicanna inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382817/0/en/iovance-biotherapeutics-reports-inducement-grants-under-nasdaq-listing-rule-5635-c-4.html",
+    "title": "Iovance Biotherapeutics Reports Inducement Grants under NASDAQ Listing Rule 5635(c)(4)",
+    "summary": "Iovance Biotherapeutics宣布根据纳斯达克上市规则5635(c)(4)向21名新任非高管员工授予111,615股普通股的期权激励，行权价14.72美元，分三年归属。",
+    "ts": 1792185300.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "iovance biotherapeutics, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382812/0/en/kane-biotech-announces-250-000-insider-loan.html",
+    "title": "Kane Biotech Announces $250,000 Insider Loan",
+    "summary": "Kane Biotech宣布接受董事会主席Philip Renaud提供的25万美元无息贷款，用于一般营运资金和企业用途，该贷款构成关联方交易。",
+    "ts": 1792184700.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "kane biotech inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382791/0/en/zenas-biopharma-announces-inducement-grants-under-nasdaq-listing-rule-5635-c-4.html",
+    "title": "Zenas BioPharma Announces Inducement Grants Under Nasdaq Listing Rule 5635(c)(4)",
+    "summary": "Zenas BioPharma宣布根据纳斯达克上市规则向新员工授予74,900个限制性股票单位作为入职激励。",
+    "ts": 1792181700.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "zenas biopharma, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382786/0/en/korro-bio-reports-inducement-grants-under-nasdaq-listing-rule-5635-c-4.html",
+    "title": "Korro Bio Reports Inducement Grants Under Nasdaq Listing Rule 5635(c)(4)",
+    "summary": "Korro Bio, Inc.宣布根据纳斯达克上市规则5635(c)(4)，向两名新员工授予非限制性股票期权，共购买4000股普通股，行权价每股8.88美元。",
+    "ts": 1792181100.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "korro bio, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382787/0/en/nanox-provides-business-update-and-furnishes-certain-preliminary-unaudited-financial-data-for-third-quarter-ended-september-30-2026.html",
+    "title": "Nanox Provides Business Update and Furnishes Certain Preliminary Unaudited Financial Data for Third Quarter Ended September 30, 2026",
+    "summary": "Nanox提供2026年第三季度业务更新和初步财务数据，其子公司Nanox.AI与Technologic s.r.l.达成意大利分销协议，以推广骨解决方案；Nanox.ARC X被TIME评为2026年最佳发明之一。",
+    "ts": 1792181100.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "technologic s.r.l.",
+      "nano-x imaging ltd",
+      "tecnologie avanzate"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382788/0/en/4dmt-announces-new-employment-inducement-grants.html",
+    "title": "4DMT Announces New Employment Inducement Grants",
+    "summary": "4D Molecular Therapeutics宣布向13名新非执行员工授予股票期权和限制性股票单位，以激励其入职。",
+    "ts": 1792181100.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "4d molecular therapeutics"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382761/0/en/dr-jacqueline-youtsos-and-renu-medical-spa-congratulate-kasi-hudson-on-becoming-a-board-certified-dermatology-nurse-practitioner.html",
+    "title": "Dr. Jacqueline Youtsos and ReNu Medical & Spa Congratulate Kasi Hudson on Becoming a Board Certified Dermatology Nurse Practitioner",
+    "summary": "ReNu Medical & Spa的Kasi Hudson通过皮肤科委员会认证，成为认证皮肤科执业护士，提升了当地专业皮肤护理的可及性。",
+    "ts": 1792174920.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "renu medical & spa"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382782/0/en/prelude-therapeutics-to-participate-in-the-chardan-healthcare-conference.html",
+    "title": "Prelude Therapeutics to Participate in the Chardan Healthcare Conference",
+    "summary": "Prelude Therapeutics将参加Chardan Healthcare会议，并在会上进行炉边谈话，首席科学官和首席财务官将出席。",
+    "ts": 1792180860.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "prelude therapeutics incorporated"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382709/0/en/regulated-information-disclosure-of-a-transparency-notification-from-blackrock-inc.html",
+    "title": "Regulated information: Disclosure of a transparency notification from BlackRock, Inc.",
+    "summary": "BlackRock, Inc.向比利时制药公司Fagron披露了持股变动通知，涉及2,015,779股和166,184份金融工具。",
+    "ts": 1792166400.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "fagron",
+      "blackrock, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382709/0/nl/gereglementeerde-informatie-openbaarmaking-van-transparantiekennisgeving-van-blackrock-inc.html",
+    "title": "Gereglementeerde informatie: Openbaarmaking van transparantiekennisgeving van BlackRock, Inc.",
+    "summary": "BlackRock, Inc.向Fagron披露持股透明通知，涉及2,015,779股及166,184个等同金融工具。",
+    "ts": 1792166400.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "fagron",
+      "blackrock, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382711/0/en/k2-vision-has-been-recognized-as-the-highest-volume-light-adjustable-lens-practice-in-the-world.html",
+    "title": "K2 Vision Has Been Recognized as the Highest-Volume Light Adjustable Lens practice in the world",
+    "summary": "K2 Vision完成5000例Light Adjustable Lens手术，被RxSight认定为全球最高量LAL实践。",
+    "ts": 1792166400.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [
+      "light adjustable lens"
+    ],
+    "orgs": [
+      "rxsight",
+      "k2 vision"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382714/0/en/opus-genetics-announces-fda-approval-of-phentolamine-ophthalmic-solution-0-75-for-the-treatment-of-presbyopia.html",
+    "title": "Opus Genetics Announces FDA Approval of Phentolamine Ophthalmic Solution 0.75% for the Treatment of Presbyopia",
+    "summary": "Opus Genetics宣布美国FDA批准其phentolamine眼科溶液0.75%（商品名未提及）用于治疗成人老花眼，该批准基于VEGA-2和VEGA-3三期试验的积极结果，并将触发Viatris的里程碑付款。",
+    "ts": 1792166400.0,
+    "src": "globenewswire",
+    "event_type": "approval",
+    "drugs": [
+      "phentolamine ophthalmic solution 0.75%"
+    ],
+    "orgs": [
+      "opus genetics, inc.",
+      "viatris inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382690/0/en/whole-lotta-dank-debuts-dank-pack-across-alberta-announces-nationwide-search-for-cannabis-partners.html",
+    "title": "Whole Lotta Dank Debuts Dank Pack Across Alberta, Announces Nationwide Search for Cannabis Partners",
+    "summary": "Whole Lotta Dank在阿尔伯塔省推出新品牌Dank Pack，首发产品Blueberry BBL，同时向全加拿大寻找大麻生产商和合作伙伴以扩大产品组合。",
+    "ts": 1792162800.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "whole lotta dank"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382634/0/en/kexing-biopharm-s-biologics-license-application-for-long-acting-g-csf-candidate-gb-k02-accepted-for-review.html",
+    "title": "Kexing Biopharm’s Biologics License Application for Long-Acting G-CSF Candidate GB-K02 Accepted for Review",
+    "summary": "科兴生物（Kexing Biopharm）自主研发的长效G-CSF候选药物GB-K02的生物制品许可申请（BLA）已获中国国家药监局（NMPA）受理，该药用于降低非髓性恶性肿瘤患者发热性中性粒细胞减少症风险，与短效产品形成互补组合。",
+    "ts": 1792157700.0,
+    "src": "globenewswire",
+    "event_type": "approval",
+    "drugs": [
+      "gb-k02"
+    ],
+    "orgs": [
+      "kexing biopharm"
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382623/0/en/moleculin-announces-reverse-stock-split.html",
+    "title": "Moleculin Announces Reverse Stock Split",
+    "summary": "Moleculin Biotech宣布对其普通股进行1:20反向股票分割，于2026年10月20日生效，流通股数从约2090万股减少至约105万股。",
+    "ts": 1792156800.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "moleculin biotech, inc."
+    ]
+  },
+  {
+    "id": "https://www.globenewswire.com/news-release/2026/10/16/3382620/0/en/breast-cancer-awareness-fundraiser-with-prairie-cannabis.html",
+    "title": "Breast Cancer Awareness Fundraiser with Prairie Cannabis",
+    "summary": "Prairie Cannabis与Gilda's Club Chicago合作，在整个十月举办乳腺癌意识月筹款活动，包括直接捐款和IESO House of Brands销售5%捐赠，以支持癌症患者家庭。",
+    "ts": 1792156500.0,
+    "src": "globenewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "gilda's club chicago",
+      "prairie cannabis",
+      "ieso house of brands"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/vivacta-bio-and-grit-bio-announce-fda-orphan-drug-designation-for-in-vivo-car-t-therapy-gt801-in-autoimmune-hemolytic-anemia-302911806.html",
+    "title": "Vivacta Bio and Grit Bio Announce FDA Orphan Drug Designation for In Vivo CAR-T Therapy GT801 in Autoimmune Hemolytic Anemia",
+    "summary": "Vivacta Bio与Grit Bio宣布FDA授予其体内CAR-T疗法GT801孤儿药认定，用于治疗自身免疫性溶血性贫血（AIHA）。",
+    "ts": 1792238400.0,
+    "src": "prnewswire",
+    "event_type": "approval",
+    "drugs": [
+      "gt801"
+    ],
+    "orgs": [
+      "grit bio",
+      "vivacta bio"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/masimos-smartset-fda-clearance-offers-breakthrough-innovation-in-pulse-oximetry-to-help-improve-critical-patient-outcomes-302911711.html",
+    "title": "Masimo's smartSET™ FDA Clearance Offers Breakthrough Innovation in Pulse Oximetry to Help Improve Critical Patient Outcomes",
+    "summary": "Masimo获得FDA 510(k)许可，为其Radius VSM设备新增房颤检测功能，结合此前获批的AI驱动的阿片类药物诱导呼吸抑制检测，扩展脉搏血氧仪临床洞察能力。",
+    "ts": 1792242000.0,
+    "src": "prnewswire",
+    "event_type": "approval",
+    "drugs": [],
+    "orgs": [
+      "masimo",
+      "danaher"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/brightmoor-hospice-llc-provides-notification-of-data-security-incident-302911735.html",
+    "title": "Brightmoor Hospice, LLC Provides Notification of Data Security Incident",
+    "summary": "Brightmoor Hospice, LLC披露了一起数据安全事件，两名员工邮箱账户在2026年3月被未经授权访问，可能涉及患者受保护的健康信息，公司于2026年10月开始通知受影响个人。",
+    "ts": 1792201800.0,
+    "src": "prnewswire",
+    "event_type": "safety",
+    "drugs": [],
+    "orgs": [
+      "brightmoor hospice, llc"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/skyrizi-risankizumab-and-rinvoq-upadacitinib-data-highlight-long-term-clinical-and-endoscopic-outcomes-across-inflammatory-bowel-disease-ibd-at-uegw-2026-302911525.html",
+    "title": "SKYRIZI® (risankizumab) and RINVOQ® (upadacitinib) Data Highlight Long-Term Clinical and Endoscopic Outcomes Across Inflammatory Bowel Disease (IBD) at UEGW 2026",
+    "summary": "AbbVie在UEGW 2026上公布20项IBD研究摘要，展示SKYRIZI（risankizumab）和RINVOQ（upadacitinib）约三年长期临床和内镜结局数据，并首次呈现双靶点疗法ABBV-466治疗中重度克罗恩病的内镜缓解数据。",
+    "ts": 1792216800.0,
+    "src": "prnewswire",
+    "event_type": "clinical",
+    "drugs": [
+      "risankizumab",
+      "abbv-466",
+      "upadacitinib"
+    ],
+    "orgs": [
+      "abbvie"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/urteil-des-pariser-gerichts-zu-einer-eingestellten-funktion-wird-nur-minimale-auswirkungen-auf-die-kunden-von-angelalign-haben-302911731.html",
+    "title": "Urteil des Pariser Gerichts zu einer eingestellten Funktion wird nur minimale Auswirkungen auf die Kunden von Angelalign haben",
+    "summary": "巴黎统一专利法院裁定Angelalign的“Torque Ridges”功能侵犯Align Technology的专利，但Angelalign已在欧洲用“Pressure Points”替代该功能，客户影响极小。",
+    "ts": 1792200540.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "align technology inc.",
+      "angelalign technology inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/evident-expands-its-pramana-digital-pathology-portfolio-to-support-small-and-medium-sized-labs-302911716.html",
+    "title": "EVIDENT Expands Its Pramana Digital Pathology Portfolio to Support Small and Medium-Sized Labs",
+    "summary": "Evident宣布推出Pramana POD台式全玻片成像（WSI）扫描仪，扩展其Pramana数字病理产品组合，旨在帮助中小型实验室及大型机构的专业应用更便捷地采用数字病理技术。",
+    "ts": 1792197000.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "evident"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/corgi-insurance-hires-former-chubb-underwriting-avp-james-kullman-302911690.html",
+    "title": "Corgi Insurance hires former Chubb Underwriting AVP James Kullman",
+    "summary": "Corgi Insurance任命James Kullman为北美承保主管，其此前在Chubb担任助理副总裁。",
+    "ts": 1792190160.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "liberty mutual",
+      "cna insurance",
+      "the hartford",
+      "corgi insurance",
+      "chubb"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/evident-expands-its-pramana-digital-pathology-portfolio-to-support-small-and-medium-sized-labs-302911714.html",
+    "title": "EVIDENT Expands Its Pramana Digital Pathology Portfolio to Support Small and Medium-Sized Labs",
+    "summary": "Evident公司推出Pramana POD台式数字病理扫描仪，扩展其数字病理产品组合，旨在支持中小型实验室，实现自动化全切片成像，减少人工干预。",
+    "ts": 1792197000.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "evident"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/actinium-pharmaceuticals-announces-inducement-grants-to-new-employees-302911600.html",
+    "title": "Actinium Pharmaceuticals Announces Inducement Grants to New Employees",
+    "summary": "Actinium Pharmaceuticals宣布向新任首席财务官和业务发展高级副总裁授予激励性股票期权和限制性股票单位。",
+    "ts": 1792184400.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "actinium pharmaceuticals, inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/amcp-market-insights-findings-show-uncertainty-in-biomarker-testing-for-esr1-mutated-advanced-breast-cancer-as-payers-weigh-earlier-detection-and-a-growing-class-of-targeted-therapies-302911655.html",
+    "title": "AMCP Market Insights Findings Show Uncertainty in Biomarker Testing for ESR1-Mutated Advanced Breast Cancer as Payers Weigh Earlier Detection and a Growing Class of Targeted Therapies",
+    "summary": "AMCP市场洞察项目发现，ESR1突变晚期乳腺癌的生物标志物检测存在不确定性，付款人权衡早期检测与不断增长的目标疗法类别，并建议灵活治疗路径和覆盖政策以改善检测实践。",
+    "ts": 1792184580.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "amcp"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/gabriel--co-celebrates-10-years-of-partnership-with-dkms-marking-a-decade-of-giving-back-through-the-gabriel-love-foundation-302911654.html",
+    "title": "Gabriel & Co. Celebrates 10 Years of Partnership with DKMS, Marking a Decade of Giving Back Through the Gabriel Love Foundation",
+    "summary": "Gabriel & Co.庆祝与DKMS合作10周年，通过员工和公众捐赠活动、新珠宝系列及年度晚会支持抗击血癌和血液疾病。",
+    "ts": 1792184400.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "gabriel & co.",
+      "dkms"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/viatris-receives-us-fda-approval-for-ryzumvi-for-the-treatment-of-presbyopia-302911593.html",
+    "title": "Viatris Receives U.S. FDA Approval for RYZUMVI® for the Treatment of Presbyopia",
+    "summary": "Viatris获得美国FDA批准RYZUMVI（phentolamine眼科溶液0.75%）用于治疗成人老花眼，扩大了该产品的适应症。该药物此前已获批用于药物诱导的瞳孔散大。",
+    "ts": 1792181100.0,
+    "src": "prnewswire",
+    "event_type": "approval",
+    "drugs": [
+      "ryzumvi",
+      "phentolamine ophthalmic solution 0.75%"
+    ],
+    "orgs": [
+      "viatris inc.",
+      "opus genetics"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/american-skin-association-announces-formation-of-asa-emerging-dermatology-leaders-advisory-committee-302909064.html",
+    "title": "/C O R R E C T I O N - American Skin Association/",
+    "summary": "美国皮肤病协会（American Skin Association）宣布成立新兴皮肤病学领袖咨询委员会，旨在培养新一代皮肤病学领导者，推动皮肤健康研究、患者教育和创新。",
+    "ts": 1792179540.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "american skin association"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/march-of-dimes-second-annual-the-collective-goes-bi-coastal-to-tackle-pressing-issues-facing-mothers-today-302911591.html",
+    "title": "March of Dimes' second annual The Collective goes bi-coastal to tackle pressing issues facing mothers today",
+    "summary": "March of Dimes举办第二届The Collective活动，跨东西海岸在纽约和洛杉矶举行，旨在解决母亲面临的心理健康和支持系统等问题。",
+    "ts": 1792179000.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "march of dimes"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/la-bresilienne-fernanda-maciel-etablit-le-record-du-monde-du-salar-duyuni-en-19-h-50-min-08-s-302911573.html",
+    "title": "La Brésilienne Fernanda Maciel établit le record du monde du Salar d'Uyuni en 19 h 50 min 08 s.",
+    "summary": "巴西运动员Fernanda Maciel在玻利维亚乌尤尼盐沼完成172.8公里穿越，用时19小时50分08秒，打破此前纪录。",
+    "ts": 1792177020.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": []
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/die-brasilianerin-fernanda-maciel-stellte-mit-195008-die-schnellste-bekannte-zeit-im-salar-de-uyuni-auf-302911572.html",
+    "title": "Die Brasilianerin Fernanda Maciel stellte mit 19:50:08 die schnellste bekannte Zeit im Salar de Uyuni auf.",
+    "summary": "Red Bull运动员Fernanda Maciel以19:50:08完成玻利维亚乌尤尼盐沼172.8公里穿越，打破此前纪录，该事件与医药无关。",
+    "ts": 1792176840.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "red bull"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/la-brasilena-fernanda-maciel-establece-el-mejor-tiempo-conocido-en-el-salar-de-uyuni-195008-302911568.html",
+    "title": "La brasileña Fernanda Maciel establece el mejor tiempo conocido en el Salar de Uyuni: 19:50:08",
+    "summary": "巴西运动员Fernanda Maciel在玻利维亚乌尤尼盐沼完成172.8公里赛程，以19小时50分08秒刷新最快已知时间纪录，比原纪录快13小时以上。",
+    "ts": 1792176600.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": []
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/five-stars-10-000-times-ivx-health-celebrates-a-major-patient-experience-milestone-302911564.html",
+    "title": "Five Stars. 10,000 Times. IVX Health Celebrates a Major Patient Experience Milestone.",
+    "summary": "IVX Health宣布其全国160多个门诊输液中心累计获得超过10,000条五星级Google评价，标志着患者体验的重要里程碑。",
+    "ts": 1792176120.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "ivx health"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/golden-state-dermatology-opens-new-morgan-hill-clinic-bringing-dedicated-board-certified-dermatology-care-to-the-community-302911546.html",
+    "title": "Golden State Dermatology Opens New Morgan Hill Clinic, Bringing Dedicated Board-Certified Dermatology Care to the Community",
+    "summary": "Golden State Dermatology在加州Morgan Hill开设新诊所，由皮肤科医生Frank Richard 'Rick' Noodleman提供综合皮肤科服务。",
+    "ts": 1792174860.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "golden state dermatology"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/ahn-cancer-center-launches-randys-trial-funded-by-community-support-and-inspired-by-a-firefighters-legacy-302911433.html",
+    "title": "AHN Cancer Center Launches RANDY'S Trial, Funded by Community Support and Inspired by a Firefighter's Legacy",
+    "summary": "Allegheny Health Network癌症中心启动了RANDY'S试验，旨在评估现有药物对阑尾癌和腹膜癌的治疗效果，该试验由社区慈善基金资助。",
+    "ts": 1792173600.0,
+    "src": "prnewswire",
+    "event_type": "clinical",
+    "drugs": [],
+    "orgs": [
+      "allegheny health network cancer center"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/youngstown-orthopaedic-associates-joins-cleveland-clinic-and-dr-james-d-solmen-retires-302911527.html",
+    "title": "Youngstown Orthopaedic Associates Joins Cleveland Clinic and Dr. James D. Solmen Retires",
+    "summary": "Youngstown Orthopaedic Associates宣布将于2026年11月1日加入Cleveland Clinic，同时Dr. James D. Solmen将于2026年10月31日退休。",
+    "ts": 1792173240.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "cleveland clinic",
+      "youngstown orthopaedic associates"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/brayton-purcell-llp-welcomes-federal-bill-addressing-artificial-stone-silicosis-epidemic-302911521.html",
+    "title": "Brayton Purcell LLP Welcomes Federal Bill Addressing Artificial Stone Silicosis Epidemic",
+    "summary": "Brayton Purcell LLP欢迎新联邦法案《Silicosis Prevention and Treatment Act》，该法案旨在扩大矽肺病的筛查、治疗、教育和患者护理，以应对加州人工石台面工人中不断增加的矽肺病病例。",
+    "ts": 1792172640.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "brayton purcell llp"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/bobby-garon-new-3-6-social-security-cola-for-2027-will-feel-smaller-than-it-looks-for-most-retirees-302911427.html",
+    "title": "Bobby Garon: New 3.6% Social Security COLA for 2027 Will Feel Smaller Than It Looks for Most Retirees",
+    "summary": "社会保障局宣布2027年生活成本调整（COLA）为3.6%，为2023年以来最大涨幅，但财务专家Bobby Garon指出，医疗保险保费上涨和工资税上限提高将抵消部分涨幅，实际到账金额可能低于预期。",
+    "ts": 1792170720.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "social security administration"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/myosin-therapeutics-invited-to-present-at-biofuture-2026-in-new-york-city-302911396.html",
+    "title": "Myosin Therapeutics Invited to Present at BioFuture 2026 in New York City",
+    "summary": "Myosin Therapeutics受邀参加BioFuture 2026会议，并在会上介绍其针对胶质母细胞瘤的新型癌症治疗机制。",
+    "ts": 1792170000.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "myosin therapeutics"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/paris-court-ruling-on-discontinued-feature-will-have-minimal-impact-on-angelalign-customers-302911488.html",
+    "title": "Paris Court Ruling on Discontinued Feature Will Have Minimal Impact on Angelalign Customers",
+    "summary": "巴黎法院裁定Angelalign的Torque Ridges功能侵犯Align Technology专利，但Angel已用升级版Pressure Points替代，对欧洲客户影响有限，其他地区不受影响。",
+    "ts": 1792169940.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "align technology inc.",
+      "angelalign technology inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/n6-achieves-iso-134852016-certification-strengthening-the-quality-foundation-behind-iconpcr-instruments-302911426.html",
+    "title": "n6 Achieves ISO 13485:2016 Certification, Strengthening the Quality Foundation Behind iconPCR™ Instruments",
+    "summary": "n6 Tec, Inc. 获得 ISO 13485:2016 认证，加强其 iconPCR™ 仪器的质量基础，认证覆盖其位于加州 Pleasanton 的基因研究仪器制造和服务。",
+    "ts": 1792166640.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "intertek",
+      "n6 tec, inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/hellonation-article-featuring-orthodontist-dr-ben-thornton-explains-how-long-patients-should-wear-a-retainer-after-braces-or-clear-aligners-302911245.html",
+    "title": "HelloNation Article Featuring Orthodontist Dr. Ben Thornton Explains How Long Patients Should Wear a Retainer After Braces or Clear Aligners",
+    "summary": "HelloNation文章引用俄勒冈州Thornton Orthodontics的Ben Thornton医生观点，解释正畸治疗后患者应长期佩戴保持器以防止牙齿移位。",
+    "ts": 1792168680.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "hellonation",
+      "thornton orthodontics"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/paris-court-ruling-on-discontinued-feature-will-have-minimal-impact-on-angelalign-customers-302911421.html",
+    "title": "Paris Court Ruling on Discontinued Feature Will Have Minimal Impact on Angelalign Customers",
+    "summary": "巴黎统一专利法院裁定Angelalign的Torque Ridges功能侵犯Align Technology专利，但Angelalign已在欧洲用升级版Pressure Points替代该功能，对客户影响有限。",
+    "ts": 1792166460.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "align technology inc.",
+      "angelalign technology inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/human-longevity-expands-its-1-million-cancer-prevention-pledge-to-breast-cancer-302910773.html",
+    "title": "Human Longevity Expands Its $1 Million Cancer Prevention Pledge to Breast Cancer",
+    "summary": "Human Longevity, Inc. (HLI) 将其100万美元癌症预防承诺扩展至乳腺癌，为符合条件的IV期乳腺癌成员提供治疗和临床支持，并强调通过全基因组测序、先进诊断和AI分析实现早期检测。",
+    "ts": 1792166400.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "human longevity, inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/over-4-million-raised-to-brighten-patients-futures-at-nicklaus-childrens-hospitals-19th-annual-diamond-ball-302911398.html",
+    "title": "Over $4 Million Raised to Brighten Patients' Futures at Nicklaus Children's Hospital's 19th Annual Diamond Ball",
+    "summary": "Nicklaus Children's Hospital第19届年度Diamond Ball筹款活动筹集超过400万美元，用于支持佛罗里达及周边地区儿童专科护理的扩展。活动中分享了患者故事，包括接受基因治疗的肌营养不良症患者和接受部分心脏移植的儿童。",
+    "ts": 1792166400.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "nicklaus children's hospital",
+      "nicklaus children's health system"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/sams-night-celebrates-21-years-of-fighting-to-end-duchenne-raises-1-7-million-for-parent-project-muscular-dystrophy-302911419.html",
+    "title": "Sam's Night Celebrates 21 Years of Fighting to End Duchenne, Raises $1.7 Million for Parent Project Muscular Dystrophy",
+    "summary": "Sam's Night慈善活动庆祝21周年，为Parent Project Muscular Dystrophy (PPMD)筹集170万美元，累计超过1000万美元，用于支持Duchenne肌营养不良的研究和疗法开发。",
+    "ts": 1792166340.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "parent project muscular dystrophy"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/business-insurance-costs-explained-in-hellonation-article-featuring-insurance-experts-jerry-and-luke-yaekel-302910770.html",
+    "title": "Business Insurance Costs Explained in HelloNation Article Featuring Insurance Experts Jerry and Luke Yaekel",
+    "summary": "HelloNation文章邀请保险专家Jerry和Luke Yaekel解读企业保险成本影响因素，涵盖行业分类、薪资、收入、理赔记录及风险管理实践。",
+    "ts": 1792166160.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "yaekel & associates insurance services inc.",
+      "hellonation"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/hims--hers-health-hims-alert-securities-class-action-filed-investors-with-losses-encouraged-to-contact-hagens-berman-before-november-2-2026-lead-plaintiff-deadline-302911339.html",
+    "title": "Hims & Hers Health (HIMS) Alert: Securities Class Action Filed, Investors with Losses Encouraged to Contact Hagens Berman Before November 2, 2026 Lead Plaintiff Deadline",
+    "summary": "Hims & Hers Health因FTC投诉指控其不当分享消费者健康信息及即刻收费等问题，面临证券集体诉讼，投资者可在2026年11月2日前联系Hagens Berman。",
+    "ts": 1792166160.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "hims & hers health",
+      "hagens berman"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/parkview-health-announces-agreement-to-acquire-ovation-healthcare-to-strengthen-community-healthcare-nationwide-advance-local-affordability-302911410.html",
+    "title": "Parkview Health announces agreement to acquire Ovation Healthcare to strengthen community healthcare nationwide, advance local affordability",
+    "summary": "Parkview Health签署协议收购共享服务提供商Ovation Healthcare，以加强全国社区医疗并提升地方可负担性。",
+    "ts": 1792165680.0,
+    "src": "prnewswire",
+    "event_type": "m&a",
+    "drugs": [],
+    "orgs": [
+      "parkview health",
+      "ovation healthcare"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/brazilian-fernanda-maciel-sets-salar-de-uyuni-fastest-known-time-of-195008-302911408.html",
+    "title": "Brazilian Fernanda Maciel Sets Salar de Uyuni Fastest Known Time of 19:50:08",
+    "summary": "巴西运动员Fernanda Maciel在玻利维亚Salar de Uyuni盐沼以19小时50分08秒完成172.8公里路线，刷新最快已知时间纪录。",
+    "ts": 1792165500.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": []
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/purina-and-redrover-mark-domestic-violence-awareness-month-by-announcing-2026-purple-leash-project-grant-recipients-302910853.html",
+    "title": "Purina and RedRover Mark Domestic Violence Awareness Month by Announcing 2026 Purple Leash Project Grant Recipients",
+    "summary": "Purina和RedRover在家庭暴力意识月宣布2026年Purple Leash Project前两轮拨款接收者，该项目自2019年以来已授予近70笔拨款，共计220万美元，为幸存者及其宠物创造了超过33.5万个安全夜晚。",
+    "ts": 1792165440.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "purina",
+      "redrover"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/recognize-runs-whats-the-point-billboard-campaign-in-times-square-and-downtown-la-302911405.html",
+    "title": "Recognize Runs 'What's the Point?' Billboard Campaign in Times Square and Downtown LA",
+    "summary": "Recognize公司在纽约时报广场和洛杉矶市中心投放了一天的广告牌，提出“上班有什么意义？”并推广其员工认可服务，引用盖洛普报告称全球员工敬业度降至20%。",
+    "ts": 1792165320.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "recognize"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/brazilian-fernanda-maciel-sets-salar-de-uyuni-fastest-known-time-of-195008-302911404.html",
+    "title": "Brazilian Fernanda Maciel Sets Salar de Uyuni Fastest Known Time of 19:50:08",
+    "summary": "巴西运动员Fernanda Maciel在玻利维亚Salar de Uyuni盐沼创下最快已知时间纪录，完成172.8公里路线，用时19小时50分8秒，比原纪录快13小时以上。此新闻与医药无关。",
+    "ts": 1792165260.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": []
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/us-labor-secretary-highlights-advanced-manufacturing-and-biotech-jobs-during-visit-to-niowave-302911393.html",
+    "title": "U.S. Labor Secretary Highlights Advanced Manufacturing and Biotech Jobs During Visit to Niowave",
+    "summary": "美国劳工部长访问Niowave，参观其医疗放射性同位素生产设施扩建项目，强调先进制造业和生物技术就业机会。",
+    "ts": 1792165200.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "niowave"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/two-women-hospitalized-with-e-coli-o157h7-sue-trader-joes-over-tarragon-chicken-salad-wraps-complaint-names-the-product-and-the-retailer-that-fda-and-usda-have-not-302910826.html",
+    "title": "Two Women Hospitalized with E. coli O157:H7 Sue Trader Joe's Over Tarragon Chicken Salad Wraps; Complaint Names the Product and the Retailer that FDA and USDA Have Not",
+    "summary": "两名女性因食用Trader Joe's的龙蒿鸡肉沙拉卷感染大肠杆菌O157:H7住院并提起诉讼，FDA和USDA未公开产品制造商和零售商信息。",
+    "ts": 1792164360.0,
+    "src": "prnewswire",
+    "event_type": "safety",
+    "drugs": [],
+    "orgs": [
+      "marler clark",
+      "usda",
+      "trader joe's company",
+      "fda"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/meant-highlights-care-coaching-and-nutrition-support-as-core-parts-of-telehealth-glp-1-weight-care-302905634.html",
+    "title": "Meant Highlights Care Coaching and Nutrition Support as Core Parts of Telehealth GLP-1 Weight Care",
+    "summary": "Meant公司强调其远程医疗GLP-1体重护理项目包括护理教练支持和营养补充剂包，与OpenLoop Health合作提供临床决策。",
+    "ts": 1792162800.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [
+      "glp-1 receptor agonists"
+    ],
+    "orgs": [
+      "meant",
+      "openloop health"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/aignostics-lance-heta-clinical-une-nouvelle-gamme-de-produits-dia-qui-accelerent-les-flux-de-travail-de-pathologie-et-reduisent-le-nombre-de-tests-moleculaires-echoues-302911368.html",
+    "title": "Aignostics lance HETA Clinical, une nouvelle gamme de produits d'IA qui accélèrent les flux de travail de pathologie et réduisent le nombre de tests moléculaires échoués",
+    "summary": "Aignostics宣布推出HETA Clinical系列AI产品，覆盖病理学工作流程，旨在加速病理检测并减少分子检测失败。",
+    "ts": 1792162440.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "aignostics"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/two-solaris-healthcare-facilities-on-newsweeks-2027-list-of-americas-best-nursing-homes-302911363.html",
+    "title": "Two Solaris Healthcare Facilities On Newsweek's 2027 List of America's Best Nursing Homes",
+    "summary": "Solaris Healthcare旗下两家养老院入选Newsweek 2027年美国最佳养老院榜单，分别位列第19和第33名。",
+    "ts": 1792162260.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "newsweek",
+      "solaris healthcare",
+      "statista"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/tamarac-rehabilitation--health-center-named-to-newsweeks-2027-list-of-americas-best-nursing-homes-302911359.html",
+    "title": "Tamarac Rehabilitation & Health Center Named to Newsweek's 2027 List of America's Best Nursing Homes",
+    "summary": "Tamarac Rehabilitation & Health Center（由Sabal Health运营）被Newsweek评为2027年美国最佳疗养院之一，排名第20（100-149床位）。",
+    "ts": 1792161840.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "newsweek",
+      "statista",
+      "sabal health"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/healthedge-investment-partners-announces-todd-cooper-as-operating-partner-302911355.html",
+    "title": "HealthEdge Investment Partners Announces Todd Cooper As Operating Partner",
+    "summary": "HealthEdge Investment Partners任命Todd Cooper为运营合伙人，他将参与投资组合公司的增长和运营改进。",
+    "ts": 1792161360.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "healthedge investment partners"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/two-summit-care-facilities-named-to-newsweeks-2027-list-of-americas-best-nursing-homes-302911354.html",
+    "title": "Two Summit Care Facilities Named to Newsweek's 2027 List of America's Best Nursing Homes",
+    "summary": "Summit Care运营的两家护理院获评Newsweek 2027年美国最佳护理院榜单，其中Surrey Place Healthcare & Rehabilitation在50-99床位类别中排名第三。",
+    "ts": 1792161360.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "summit care"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/crispr-market-worth-6-12-billion-by-2031---exclusive-report-by-marketsandmarkets-302911139.html",
+    "title": "CRISPR Market worth $6.12 billion by 2031 - Exclusive Report by MarketsandMarkets™",
+    "summary": "CRISPR市场预计到2031年达61.2亿美元，年复合增长率12.0%，北美占最大份额。报告由MarketsandMarkets发布。",
+    "ts": 1792161000.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "marketsandmarkets"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/icims-unveils-candidate-fraud-strategy-to-help-enterprise-recruiting-teams-detect-fake-applicants-302911338.html",
+    "title": "ICIMS Unveils Candidate Fraud Strategy to Help Enterprise Recruiting Teams Detect Fake Applicants",
+    "summary": "ICIMS推出候选人欺诈检测框架，联合Socure和ApplicantX by Brilliant在ICIMS Marketplace新增欺诈检测类别，以帮助招聘团队识别虚假申请人。",
+    "ts": 1792160220.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "applicantx by brilliant",
+      "icims",
+      "socure"
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/adhd-drugs-market-to-reach-usd-22-79-billion-by-2035---credence-research-302910530.html",
+    "title": "ADHD Drugs Market to Reach USD 22.79 Billion by 2035 - Credence Research",
+    "summary": "Credence Research发布报告，预测全球ADHD药物市场将从2025年的141.1亿美元增长至2035年的227.9亿美元，复合年增长率为4.91%，北美占最大份额，亚太增长最快。",
+    "ts": 1792159260.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [
+      "atomoxetine",
+      "amphetamines",
+      "clonidine",
+      "lisdexamfetamine",
+      "methylphenidate",
+      "guanfacine"
+    ],
+    "orgs": [
+      "credence research inc."
+    ]
+  },
+  {
+    "id": "https://www.prnewswire.com/news-releases/devonian-health-group-provides-update-on-its-planned-nyse-american-listing-302911326.html",
+    "title": "Devonian Health Group Provides Update on its Planned NYSE American Listing",
+    "summary": "Devonian Health Group更新其计划在NYSE American上市及美国IPO的进展，公司正与ThinkEquity合作推进，上市代码为DHGR和DHGR WS，具体时间待定。",
+    "ts": 1792159260.0,
+    "src": "prnewswire",
+    "event_type": "other",
+    "drugs": [],
+    "orgs": [
+      "tsx venture exchange",
+      "devonian health group inc.",
+      "nyse american",
+      "thinkequity"
+    ]
+  }
+]
