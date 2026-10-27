@@ -62,6 +62,7 @@ from backend.src.api.schemas import (
     PipelineCrawlConfigUpdate,
     PipelineSyncRequest,
     ProfileUpdate,
+    RagConfigTestRequest,
     RagConfigUpdate,
     ReportExportRequest,
     UserCreate,
@@ -1213,6 +1214,42 @@ def api_admin_rag_config_put(body: RagConfigUpdate, actor: Actor = Depends(admin
         ),
     )
     return ok(payload)
+
+
+@app.post("/api/admin/rag-config/test")
+async def api_admin_rag_config_test(
+    body: RagConfigTestRequest,
+    _actor: Actor = Depends(admin_actor),
+):
+    """用当前 RAG 配置试跑检索（+重排），返回命中条数与前几条标题。"""
+    from backend.src.rag.reranker import rerank
+    from backend.src.rag.retriever import retrieve_hits
+    from backend.src.rag.settings import load_rag_settings
+
+    q = (body.query or "").strip() or "医药新闻"
+    settings = load_rag_settings()
+    pool_k = max(1, int(settings.top_k) * int(settings.rerank_pool_multiplier or 2))
+    try:
+        with session_scope() as session:
+            raw = await retrieve_hits(session, q, top_k=pool_k)
+            ranked = await rerank(q, raw, top_k=int(settings.top_k))
+            items = [
+                {
+                    "id": news.id,
+                    "title": news.title or "",
+                    "score": round(float(score), 4),
+                }
+                for news, score in ranked[:5]
+            ]
+            return ok({
+                "query": q,
+                "hit_count": len(ranked),
+                "pool_count": len(raw),
+                "top_k": int(settings.top_k),
+                "items": items,
+            })
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e) or "检索测试失败") from e
 
 
 @app.get("/api/admin/crawlers")

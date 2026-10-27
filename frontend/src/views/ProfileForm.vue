@@ -203,7 +203,7 @@
       <p v-if="notices.vision" class="wide result" :class="noticeClass(notices.vision)">{{ notices.vision.text }}</p>
     </fieldset>
 
-    <div class="row wide actions">
+    <div v-if="!hideActions" class="row wide actions">
       <button type="submit" :disabled="busy">{{ submitLabel }}</button>
       <button v-if="showCancel" type="button" class="secondary" :disabled="busy" @click="emit('cancel')">取消</button>
     </div>
@@ -227,6 +227,7 @@ const props = defineProps({
   notices: { type: Object, default: () => ({}) },
   allowSync: { type: Boolean, default: false },
   showCancel: { type: Boolean, default: false },
+  hideActions: { type: Boolean, default: false },
   profileId: { type: [Number, String], default: null },
 })
 const emit = defineEmits(['submit', 'test', 'cancel'])
@@ -445,6 +446,12 @@ function submit() {
   if (modelLists.rerank.length && !local.reranker_model.trim()) return
   emit('submit', payload())
 }
+
+defineExpose({
+  getPayload: () => payload(),
+  testSlot,
+  fetchModels,
+})
 </script>
 
 <style scoped>

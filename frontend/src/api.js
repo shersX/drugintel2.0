@@ -157,6 +157,7 @@ export const api = {
   stages: () => request('/api/stats/stages'),
   ragConfig: () => request('/api/admin/rag-config'),
   updateRagConfig: (body) => request('/api/admin/rag-config', { method: 'PUT', body: JSON.stringify(body) }),
+  testRagConfig: (body) => request('/api/admin/rag-config/test', { method: 'POST', body: JSON.stringify(body || {}) }),
   adminCrawlers: () => request('/api/admin/crawlers'),
   updateAdminCrawler: (key, body) => request(`/api/admin/crawlers/${encodeURIComponent(key)}`, {
     method: 'PUT',

@@ -78,9 +78,16 @@ export const SIDE_ITEMS = {
     { key: 'alerts-mine', label: '我的订阅', to: '/alerts', icon: 'bell', match: (r) => r.path === '/alerts' },
   ],
   admin: [
-    { key: 'admin-models', label: '模型配置', to: '/settings?tab=models', icon: 'cpu', match: (r) => r.path === '/settings' && (r.query.tab === 'models' || !r.query.tab) },
-    { key: 'admin-rag', label: 'RAG 检索', to: '/settings?tab=rag', icon: 'search', match: (r) => r.path === '/settings' && r.query.tab === 'rag' },
-    { key: 'admin-mail', label: '邮件服务', to: '/settings?tab=mail', icon: 'mail', match: (r) => r.path === '/settings' && r.query.tab === 'mail' },
+    {
+      key: 'admin-system',
+      label: '系统设置',
+      to: '/settings?tab=system',
+      icon: 'cpu',
+      match: (r) =>
+        r.path === '/settings'
+        && (!r.query.tab
+          || ['system', 'models', 'rag', 'mail'].includes(String(r.query.tab))),
+    },
     { key: 'admin-crawlers', label: '爬虫注册表', to: '/settings?tab=crawlers', icon: 'bot', match: (r) => r.path === '/settings' && r.query.tab === 'crawlers' },
     {
       key: 'admin-monitor',

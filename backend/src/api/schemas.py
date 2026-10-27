@@ -24,6 +24,10 @@ class RagConfigUpdate(BaseModel):
     temperature: float = Field(0.3, ge=0.0, le=2.0)
 
 
+class RagConfigTestRequest(BaseModel):
+    query: str = Field("医药新闻", min_length=1, max_length=500)
+
+
 class CrawlerSettingUpdate(BaseModel):
     enabled: bool = True
     page_count: int = Field(1, ge=1, le=50)
