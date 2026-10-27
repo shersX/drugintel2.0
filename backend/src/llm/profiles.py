@@ -168,7 +168,7 @@ def create_profile(
             reranker_base_url=_clean_url(_require_text(reranker_base_url, "重排 Base URL"))[:300],
             reranker_model=_require_text(reranker_model, "重排模型")[:200],
             vision_api_key=seal((vision_api_key or "").strip()) if (vision_api_key or "").strip() else "",
-            vision_base_url=(v_url or _clean_url(base_url))[:300],
+            vision_base_url=v_url[:300],
             vision_model=(vision_model or "").strip()[:200],
             is_active=False,
         )
@@ -223,8 +223,7 @@ def update_profile(
         row.reranker_base_url = _clean_url(_require_text(reranker_base_url, "重排 Base URL"))[:300]
         row.reranker_model = _require_text(reranker_model, "重排模型")[:200]
         row.reranker_api_key = _assign_key(row.reranker_api_key, reranker_api_key, "重排 API Key")
-        v_url = _clean_url(vision_base_url) if (vision_base_url or "").strip() else row.base_url
-        row.vision_base_url = (v_url or row.base_url)[:300]
+        row.vision_base_url = _clean_url(vision_base_url or "")[:300]
         row.vision_model = (vision_model or "").strip()[:200]
         # 视觉 Key 可留空（新闻链路不依赖）；有输入则更新，留空且已有则保留
         if (vision_api_key or "").strip():

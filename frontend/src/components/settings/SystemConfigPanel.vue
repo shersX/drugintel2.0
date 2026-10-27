@@ -5,127 +5,156 @@
       <p class="sys-desc">配置模型服务、RAG 检索与邮件通道，确保问答与告警稳定运行。</p>
     </header>
 
-    <!-- 上方：模型配置（单行） -->
-    <section class="cfg-card model-bar-card">
-      <div class="model-bar">
-        <div class="cfg-card-title model-bar-brand">
-          <span class="cfg-ico" aria-hidden="true">◎</span>
-          <h3>模型配置</h3>
-          <span class="cfg-status" :class="modelReady ? 'ok' : 'bad'">
-            {{ modelReady ? '已配置' : '未就绪' }}
-          </span>
+    <!-- 模型配置：对话 / 嵌入 / 重排 / 视觉各自独立 -->
+    <section class="cfg-card model-split">
+      <header class="cfg-card-head studio-head">
+        <div class="studio-head-copy">
+          <div class="cfg-card-title">
+            <span class="cfg-ico" aria-hidden="true">◎</span>
+            <h3>模型配置</h3>
+            <span class="cfg-status" :class="modelReady ? 'ok' : 'bad'">
+              {{ modelReady ? '已配置' : '未就绪' }}
+            </span>
+          </div>
+          <p class="studio-lead">对话、嵌入、重排、视觉分开填写。地址和密钥可以各不相同，保存后写入当前正在使用的服务。</p>
         </div>
-        <div class="field model-bar-field">
-          <label>配置组合</label>
-          <UiSelect
-            :model-value="editingId === 'new' ? 'new' : (selectedId == null ? '' : String(selectedId))"
-            :options="profileOptions"
-            :allow-empty="false"
-            size="md"
-            placeholder="选择配置"
-            @update:model-value="onSelectProfile"
-          />
-        </div>
-        <div class="field model-bar-field grow">
-          <label>对话模型</label>
-          <input v-model="editBuf.chat_model" type="text" placeholder="模型 ID" :disabled="busy" />
-        </div>
-        <div class="field model-bar-field grow">
-          <label>API 地址</label>
-          <input v-model="editBuf.base_url" type="text" placeholder="https://…" :disabled="busy" />
-        </div>
-        <div class="field model-bar-field">
-          <label>API Key</label>
-          <input
-            v-model="editBuf.api_key"
-            type="password"
-            autocomplete="off"
-            :placeholder="keyPlaceholder"
-            :disabled="busy"
-          />
-        </div>
-        <div class="model-bar-actions">
-          <button type="button" :disabled="busy" @click="saveModel">
-            {{ busy ? '…' : '保存' }}
+        <div class="head-actions">
+          <button type="button" class="cfg-test" :disabled="busy" @click="saveModel">
+            {{ busy && !testBusy ? '…' : '保存' }}
           </button>
-          <button type="button" class="secondary" :disabled="busy" @click="testConnection">
-            {{ testBusy === 'model' ? '…' : '测试连接' }}
-          </button>
-          <button
-            v-if="selectedProfile && !selectedProfile.is_active"
-            type="button"
-            class="secondary"
-            :disabled="busy"
-            @click="activate(selectedProfile)"
-          >启用</button>
-          <button type="button" class="ghost" :disabled="busy" @click="startCreate">新增</button>
-          <button
-            v-if="selectedProfile && editingId !== 'new'"
-            type="button"
-            class="ghost"
-            :disabled="busy"
-            @click="remove(selectedProfile)"
-          >删除</button>
         </div>
+      </header>
+
+      <div class="split-grid">
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>对话</h4>
+              <p>问答生成</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('chat')">
+              {{ testBusy === 'chat' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="field">
+            <label>模型</label>
+            <input v-model="editBuf.chat_model" class="mono" type="text" placeholder="模型 ID" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.chat ? '已保存，留空不改' : '尚未保存' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.api_key" class="mono" :type="showKey.chat ? 'text' : 'password'" autocomplete="off" :placeholder="keyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.chat = !showKey.chat">{{ showKey.chat ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <p v-if="slotMsg.chat" class="slot-msg" :class="{ 'form-error': slotErr.chat }">{{ slotMsg.chat }}</p>
+        </article>
+
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>嵌入</h4>
+              <p>把资料写成向量</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('embedding')">
+              {{ testBusy === 'embedding' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="slot-pair">
+            <div class="field">
+              <label>模型</label>
+              <input v-model="editBuf.embedding_model" class="mono" type="text" :disabled="busy" />
+            </div>
+            <div class="field">
+              <label>维度</label>
+              <input v-model.number="editBuf.embedding_dim" type="number" min="1" max="4096" :disabled="busy" />
+            </div>
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.embedding_base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.embedding ? '已保存，留空不改' : '尚未保存' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.embedding_api_key" class="mono" :type="showKey.embedding ? 'text' : 'password'" autocomplete="off" :placeholder="embedKeyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.embedding = !showKey.embedding">{{ showKey.embedding ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('embedding')">填入对话的地址与密钥</button>
+          <p v-if="slotMsg.embedding" class="slot-msg" :class="{ 'form-error': slotErr.embedding }">{{ slotMsg.embedding }}</p>
+        </article>
+
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>重排</h4>
+              <p>检索结果二次排序</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('rerank')">
+              {{ testBusy === 'rerank' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="field">
+            <label>模型</label>
+            <input v-model="editBuf.reranker_model" class="mono" type="text" :disabled="busy" @change="rerankModel = editBuf.reranker_model" />
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.reranker_base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.rerank ? '已保存，留空不改' : '尚未保存' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.reranker_api_key" class="mono" :type="showKey.rerank ? 'text' : 'password'" autocomplete="off" :placeholder="rerankKeyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.rerank = !showKey.rerank">{{ showKey.rerank ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('rerank')">填入对话的地址与密钥</button>
+          <p v-if="slotMsg.rerank" class="slot-msg" :class="{ 'form-error': slotErr.rerank }">{{ slotMsg.rerank }}</p>
+        </article>
+
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>视觉</h4>
+              <p>管线抽图才需要，可留空</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('vision')">
+              {{ testBusy === 'vision' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="field">
+            <label>模型</label>
+            <input v-model="editBuf.vision_model" class="mono" type="text" placeholder="可选" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.vision_base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.vision ? '已保存，留空不改' : '可选' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.vision_api_key" class="mono" :type="showKey.vision ? 'text' : 'password'" autocomplete="off" :placeholder="visionKeyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.vision = !showKey.vision">{{ showKey.vision ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('vision')">填入对话的地址与密钥</button>
+          <p v-if="slotMsg.vision" class="slot-msg" :class="{ 'form-error': slotErr.vision }">{{ slotMsg.vision }}</p>
+        </article>
       </div>
-      <details class="model-more">
-        <summary>嵌入 / 重排 / 视觉等详细项</summary>
-        <div class="model-more-grid">
-          <div class="field">
-            <label>配置名称</label>
-            <input v-model="editBuf.name" type="text" placeholder="例如：硅基流动" />
-          </div>
-          <div class="field">
-            <label>嵌入模型</label>
-            <input v-model="editBuf.embedding_model" type="text" />
-          </div>
-          <div class="field">
-            <label>嵌入维度</label>
-            <input v-model.number="editBuf.embedding_dim" type="number" min="1" max="4096" />
-          </div>
-          <div class="field">
-            <label>嵌入 Base URL</label>
-            <input v-model="editBuf.embedding_base_url" type="text" />
-          </div>
-          <div class="field">
-            <label>嵌入 API Key</label>
-            <input v-model="editBuf.embedding_api_key" type="password" autocomplete="off" :placeholder="embedKeyPlaceholder" />
-          </div>
-          <div class="field">
-            <label>重排模型</label>
-            <input v-model="editBuf.reranker_model" type="text" @change="rerankModel = editBuf.reranker_model" />
-          </div>
-          <div class="field">
-            <label>重排 Base URL</label>
-            <input v-model="editBuf.reranker_base_url" type="text" />
-          </div>
-          <div class="field">
-            <label>重排 API Key</label>
-            <input v-model="editBuf.reranker_api_key" type="password" autocomplete="off" :placeholder="rerankKeyPlaceholder" />
-          </div>
-          <div class="field">
-            <label>视觉模型</label>
-            <input v-model="editBuf.vision_model" type="text" placeholder="可选" />
-          </div>
-          <div class="field">
-            <label>视觉 Base URL</label>
-            <input v-model="editBuf.vision_base_url" type="text" />
-          </div>
-          <div class="field">
-            <label>视觉 API Key</label>
-            <input v-model="editBuf.vision_api_key" type="password" autocomplete="off" :placeholder="visionKeyPlaceholder" />
-          </div>
-          <label class="check sync-check">
-            <input type="checkbox" v-model="syncFromChat" />
-            嵌入 / 重排 / 视觉沿用对话 Key 与地址
-          </label>
-        </div>
-      </details>
-      <p v-if="selectedDimMismatch" class="status-warn model-bar-msg">
-        嵌入维度与库不一致（库 {{ vectorDim }} / 配置 {{ editBuf.embedding_dim }}），保存或启用时将确认重建。
-      </p>
-      <p v-if="modelError" class="form-error model-bar-msg">{{ modelError }}</p>
-      <p v-if="modelTestMsg" class="meta model-bar-msg" :class="{ 'form-error': modelTestErr }">{{ modelTestMsg }}</p>
+
+      <div v-if="selectedDimMismatch || modelError || modelTestMsg" class="studio-foot">
+        <p v-if="selectedDimMismatch" class="status-warn">
+          嵌入维度与库不一致（库 {{ vectorDim }} / 当前 {{ editBuf.embedding_dim }}），保存时将确认重建。
+        </p>
+        <p v-if="modelError" class="form-error">{{ modelError }}</p>
+        <p v-if="modelTestMsg" class="meta" :class="{ 'form-error': modelTestErr }">{{ modelTestMsg }}</p>
+      </div>
     </section>
 
     <!-- 下方三列：RAG | 邮件 | 说明 -->
@@ -296,9 +325,9 @@
         </div>
         <div class="cfg-card-pad help-body">
           <h4>模型配置</h4>
-          <p>对话 / 嵌入 / 重排 / 视觉可共用同一供应商 Key。嵌入维度须与向量库一致；管线图片抽取需配置视觉模型。</p>
+          <p>对话、嵌入、重排、视觉分开配置，地址和密钥不必相同。嵌入维度须与向量库一致；管线图片抽取需填写视觉模型。</p>
           <h4>RAG 检索</h4>
-          <p>向量库与索引由系统固定使用 PostgreSQL。Top-K 控制进入回答的资料条数；重排模型随 RAG 区保存写入当前模型组合。</p>
+          <p>向量库与索引由系统固定使用 PostgreSQL。Top-K 控制进入回答的资料条数。重排模型在上方「重排」中修改，这里的下拉与它是同一项。</p>
           <h4>邮件服务</h4>
           <p>多数邮箱需使用授权码而非登录密码。465 走 SSL；587 请勾选 STARTTLS。建议先保存再测试发送。</p>
           <div class="help-links">
@@ -334,7 +363,9 @@ const revision = ref(0)
 const editingId = ref(null)
 const selectedId = ref(null)
 const editBuf = reactive(blank())
-const syncFromChat = ref(false)
+const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false })
+const slotMsg = reactive({ chat: '', embedding: '', rerank: '', vision: '' })
+const slotErr = reactive({ chat: false, embedding: false, rerank: false, vision: false })
 const keepFlags = reactive({
   chat: false,
   embedding: false,
@@ -384,20 +415,6 @@ const activeProfile = computed(() => profiles.value.find((item) => item.is_activ
 const selectedProfile = computed(() =>
   profiles.value.find((item) => item.id === selectedId.value) || null,
 )
-const activeSourceLabel = computed(() => {
-  if (activeProfile.value) return activeProfile.value.name || `配置 #${activeProfile.value.id}`
-  return '未启用 · 回退 .env'
-})
-const profileOptions = computed(() => {
-  const opts = profiles.value.map((p) => ({
-    value: String(p.id),
-    label: `${p.name || `配置 #${p.id}`}${p.is_active ? '（使用中）' : ''}`,
-  }))
-  if (editingId.value === 'new') {
-    opts.unshift({ value: 'new', label: '新建配置…' })
-  }
-  return opts
-})
 const modelReady = computed(() => {
   const row = activeProfile.value
   if (!row) return false
@@ -409,18 +426,9 @@ const selectedDimMismatch = computed(() => {
   return Number(editBuf.embedding_dim) !== Number(vectorDim.value)
 })
 const keyPlaceholder = computed(() => (keepFlags.chat ? '已保存，留空不改' : 'sk-...'))
-const embedKeyPlaceholder = computed(() => {
-  if (syncFromChat.value) return '沿用对话 Key'
-  return keepFlags.embedding ? '已保存，留空不改' : 'sk-...'
-})
-const rerankKeyPlaceholder = computed(() => {
-  if (syncFromChat.value) return '沿用对话 Key'
-  return keepFlags.rerank ? '已保存，留空不改' : 'sk-...'
-})
-const visionKeyPlaceholder = computed(() => {
-  if (syncFromChat.value) return '沿用对话 Key'
-  return keepFlags.vision ? '已保存，留空不改' : '可选'
-})
+const embedKeyPlaceholder = computed(() => (keepFlags.embedding ? '已保存，留空不改' : 'sk-...'))
+const rerankKeyPlaceholder = computed(() => (keepFlags.rerank ? '已保存，留空不改' : 'sk-...'))
+const visionKeyPlaceholder = computed(() => (keepFlags.vision ? '已保存，留空不改' : '可选'))
 const ragBm25Weight = computed(() => {
   const w = Number(ragForm.hybrid_vector_weight)
   if (!Number.isFinite(w)) return '—'
@@ -472,16 +480,15 @@ function fillEditBufFrom(source, { isNew = false } = {}) {
   editBuf.base_url = source.base_url || ''
   editBuf.chat_model = source.chat_model || ''
   editBuf.embedding_api_key = ''
-  editBuf.embedding_base_url = source.embedding_base_url || source.base_url || ''
+  editBuf.embedding_base_url = source.embedding_base_url || ''
   editBuf.embedding_model = source.embedding_model || ''
   editBuf.embedding_dim = Number(source.embedding_dim) || 1024
   editBuf.reranker_api_key = ''
-  editBuf.reranker_base_url = source.reranker_base_url || source.base_url || ''
+  editBuf.reranker_base_url = source.reranker_base_url || ''
   editBuf.reranker_model = source.reranker_model || ''
   editBuf.vision_api_key = ''
-  editBuf.vision_base_url = source.vision_base_url || source.base_url || ''
+  editBuf.vision_base_url = source.vision_base_url || ''
   editBuf.vision_model = source.vision_model || ''
-  syncFromChat.value = false
   keepFlags.chat = !isNew && Boolean(source.has_chat_key)
   keepFlags.embedding = !isNew && Boolean(source.has_embedding_key)
   keepFlags.rerank = !isNew && Boolean(source.has_reranker_key)
@@ -495,8 +502,8 @@ function onRerankChange(v) {
 }
 
 function buildPayload() {
-  const base = {
-    name: editBuf.name.trim() || '未命名配置',
+  return {
+    name: editBuf.name.trim() || '当前配置',
     api_key: editBuf.api_key,
     base_url: editBuf.base_url.trim(),
     chat_model: editBuf.chat_model.trim(),
@@ -505,22 +512,8 @@ function buildPayload() {
     embedding_dim: Number(editBuf.embedding_dim),
     reranker_base_url: editBuf.reranker_base_url.trim(),
     reranker_model: (rerankModel.value || editBuf.reranker_model || '').trim(),
-    vision_base_url: (editBuf.vision_base_url || editBuf.base_url).trim(),
+    vision_base_url: editBuf.vision_base_url.trim(),
     vision_model: editBuf.vision_model.trim(),
-  }
-  if (syncFromChat.value) {
-    return {
-      ...base,
-      embedding_api_key: editBuf.api_key || editBuf.embedding_api_key,
-      embedding_base_url: editBuf.base_url.trim(),
-      reranker_api_key: editBuf.api_key || editBuf.reranker_api_key,
-      reranker_base_url: editBuf.base_url.trim(),
-      vision_api_key: editBuf.api_key || editBuf.vision_api_key,
-      vision_base_url: editBuf.base_url.trim(),
-    }
-  }
-  return {
-    ...base,
     embedding_api_key: editBuf.embedding_api_key,
     reranker_api_key: editBuf.reranker_api_key,
     vision_api_key: editBuf.vision_api_key,
@@ -540,23 +533,22 @@ function isDimMismatch(err) {
 
 function syncSelection() {
   if (editingId.value === 'new') return
-  const ids = new Set(profiles.value.map((p) => p.id))
-  if (selectedId.value != null && ids.has(selectedId.value)) return
   const active = profiles.value.find((p) => p.is_active)
   selectedId.value = active?.id ?? profiles.value[0]?.id ?? null
 }
 
-function onSelectProfile(v) {
-  if (v === 'new') {
-    startCreate()
-    return
-  }
-  const id = Number(v)
-  selectedId.value = Number.isFinite(id) ? id : null
-  editingId.value = null
-  modelError.value = ''
-  const row = profiles.value.find((p) => p.id === selectedId.value)
-  if (row) fillEditBufFrom(row)
+const SLOT_FIELD = {
+  chat: { url: 'base_url', key: 'api_key' },
+  embedding: { url: 'embedding_base_url', key: 'embedding_api_key' },
+  rerank: { url: 'reranker_base_url', key: 'reranker_api_key' },
+  vision: { url: 'vision_base_url', key: 'vision_api_key' },
+}
+
+function copyChatInto(slot) {
+  const spec = SLOT_FIELD[slot]
+  if (!spec) return
+  editBuf[spec.url] = editBuf.base_url
+  if (editBuf.api_key) editBuf[spec.key] = editBuf.api_key
 }
 
 function startCreate() {
@@ -667,43 +659,30 @@ async function activate(item, rebuild = false) {
   }
 }
 
-async function remove(item) {
-  if (!window.confirm(`删除「${item.name || `配置 #${item.id}`}」？`)) return
-  busy.value = true
-  modelError.value = ''
-  try {
-    await api.deleteLlmProfile(item.id)
-    if (editingId.value === 'new') editingId.value = null
-    if (selectedId.value === item.id) selectedId.value = null
-    await loadProfiles()
-  } catch (e) {
-    modelError.value = e.message || '删除失败'
-  } finally {
-    busy.value = false
-  }
-}
-
-async function testConnection() {
-  modelTestMsg.value = ''
-  modelTestErr.value = false
-  if (!editBuf.base_url.trim()) {
-    modelTestErr.value = true
-    modelTestMsg.value = '请填写 API 地址'
+async function testSlot(slot) {
+  const spec = SLOT_FIELD[slot]
+  if (!spec) return
+  slotMsg[slot] = ''
+  slotErr[slot] = false
+  const baseUrl = String(editBuf[spec.url] || '').trim()
+  if (!baseUrl) {
+    slotErr[slot] = true
+    slotMsg[slot] = '请填写 API 地址'
     return
   }
-  testBusy.value = 'model'
+  testBusy.value = slot
   busy.value = true
   try {
     await api.testLlmProfile({
-      base_url: editBuf.base_url.trim(),
-      api_key: editBuf.api_key,
+      base_url: baseUrl,
+      api_key: editBuf[spec.key],
       profile_id: editingId.value === 'new' ? undefined : selectedProfile.value?.id,
-      slot: 'chat',
+      slot,
     })
-    modelTestMsg.value = '对话接口连接成功'
+    slotMsg[slot] = '连接成功'
   } catch (e) {
-    modelTestErr.value = true
-    modelTestMsg.value = e.message || '连接失败'
+    slotErr[slot] = true
+    slotMsg[slot] = e.message || '连接失败'
   } finally {
     busy.value = false
     testBusy.value = ''
@@ -826,30 +805,30 @@ async function saveModel() {
   busy.value = true
   try {
     const payload = buildPayload()
-    if (!payload.base_url || !payload.chat_model) throw new Error('请填写对话模型与 API 地址')
-    if (editingId.value === 'new') {
-      const before = new Set(profiles.value.map((p) => p.id))
-      await api.createLlmProfile(payload)
+    if (!payload.base_url || !payload.chat_model) throw new Error('请填写对话的模型与 API 地址')
+    if (!payload.embedding_base_url || !payload.embedding_model) throw new Error('请填写嵌入的模型与 API 地址')
+    if (!payload.reranker_base_url || !payload.reranker_model) throw new Error('请填写重排的模型与 API 地址')
+    let targetId
+    if (editingId.value === 'new' || !selectedProfile.value) {
+      const created = await api.createLlmProfile(payload)
+      targetId = created?.id
       editingId.value = null
-      await loadProfiles()
-      const added = profiles.value.find((p) => !before.has(p.id))
-      if (added) selectedId.value = added.id
     } else {
-      const item = selectedProfile.value
-      if (!item) throw new Error('请选择一套模型配置')
+      targetId = selectedProfile.value.id
       try {
-        await api.updateLlmProfile(item.id, payload)
-        await loadProfiles()
+        await api.updateLlmProfile(targetId, payload)
       } catch (e) {
         if (isDimMismatch(e) && window.confirm(e.message)) {
-          await api.updateLlmProfile(item.id, { ...payload, rebuild: true })
-          await loadProfiles()
+          await api.updateLlmProfile(targetId, { ...payload, rebuild: true })
         } else {
           throw e
         }
       }
     }
-    modelTestMsg.value = '模型配置已保存'
+    await loadProfiles()
+    const row = profiles.value.find((p) => p.id === targetId)
+    if (row && !row.is_active) await activate(row)
+    if (!modelError.value) modelTestMsg.value = '四项配置已分别保存'
   } catch (e) {
     modelError.value = e.message || '保存失败'
   } finally {
@@ -871,7 +850,7 @@ async function saveRag() {
       temperature: ragForm.temperature,
     })
     applyRagForm(data)
-    // 重排模型写在当前模型组合上
+    // 重排模型与上方「重排」是同一项
     const item = selectedProfile.value
     const model = (rerankModel.value || '').trim()
     if (item && model && model !== item.reranker_model) {
@@ -891,18 +870,6 @@ async function saveRag() {
 async function saveMail() {
   await saveSmtp({ quiet: false })
 }
-
-watch(syncFromChat, (on) => {
-  if (!on) return
-  editBuf.embedding_base_url = editBuf.base_url
-  editBuf.reranker_base_url = editBuf.base_url
-  editBuf.vision_base_url = editBuf.base_url
-  if (editBuf.api_key) {
-    editBuf.embedding_api_key = editBuf.api_key
-    editBuf.reranker_api_key = editBuf.api_key
-    editBuf.vision_api_key = editBuf.api_key
-  }
-})
 
 watch(
   () => editBuf.reranker_model,
@@ -1014,54 +981,106 @@ onMounted(async () => {
 }
 .cfg-card-pad { padding: 14px 16px 16px; min-width: 0; }
 
-.model-bar-card { padding: 0; }
-.model-bar {
+.model-split { padding: 0; }
+.studio-head { align-items: flex-start; }
+.studio-head-copy { min-width: 0; flex: 1; }
+.studio-lead {
+  margin: 6px 0 0;
+  color: var(--ink-mute);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 14px;
+}
+.slot-card {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 12px;
-  padding: 12px 14px;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
 }
-.model-bar-brand {
-  flex: none;
-  padding-bottom: 4px;
-}
-.model-bar-brand h3 { font-size: 15px; }
-.model-bar-field {
-  flex: 0 1 140px;
-  min-width: 110px;
-}
-.model-bar-field.grow {
-  flex: 1 1 160px;
-  min-width: 140px;
-}
-.model-bar-actions {
+.slot-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 2px;
-  margin-left: auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
-.model-more {
-  border-top: 1px solid var(--rule);
-  padding: 0 14px 10px;
+.slot-head h4 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--pine);
 }
-.model-more summary {
-  cursor: pointer;
-  font-size: 12px;
+.slot-head p {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-mute);
+}
+.slot-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(88px, 0.6fr);
+  gap: 10px;
+}
+.field .mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.field-note {
+  margin-left: 6px;
   font-weight: 600;
   color: var(--ink-mute);
-  padding: 8px 0 4px;
-  user-select: none;
 }
-.model-more-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px 12px;
-  padding-bottom: 6px;
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
-.sync-check { grid-column: 1 / -1; margin-top: 2px; }
-.model-bar-msg { margin: 0; padding: 0 14px 10px; }
+.key-row input { flex: 1; min-width: 0; }
+.model-split button.key-toggle {
+  flex: none;
+  margin: 0;
+  padding: 7px 8px;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--pine);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: none;
+}
+.model-split button.key-toggle:hover:not(:disabled) {
+  background: var(--wash);
+  border-color: var(--pine);
+  transform: none;
+  box-shadow: none;
+}
+.model-split button.linkish {
+  margin: 0;
+  letter-spacing: 0;
+}
+.model-split button.linkish:hover:not(:disabled) {
+  background: transparent;
+  color: var(--moss);
+  transform: none;
+  box-shadow: none;
+}
+.slot-msg { margin: 0; font-size: var(--fs-xs); color: var(--pine); }
+.studio-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 18px 14px;
+}
+.studio-foot p { margin: 0; }
 
 .tri-row {
   display: grid;
@@ -1183,5 +1202,9 @@ onMounted(async () => {
 
 @media (max-width: 1024px) {
   .tri-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .split-grid,
+  .slot-pair { grid-template-columns: 1fr; }
 }
 </style>
