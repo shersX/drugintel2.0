@@ -50,7 +50,7 @@
                     class="secondary"
                     :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
                     @click="saveCrawler(row)"
-                  >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
+                  >{{ crawlerBusy === row.crawler_key ? '…' : '保存' }}</button>
                 </td>
               </tr>
             </tbody>
@@ -113,7 +113,7 @@
           <table class="cfg-table crawler-table">
             <thead>
               <tr>
-                <th>来源</th><th>启用</th><th>说明</th><th></th>
+                <th>来源</th><th>启用</th><th>来源 URL</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -125,6 +125,7 @@
                 <td>
                   <strong>{{ row.name }}</strong>
                   <div class="meta mono">{{ row.crawler_key }}</div>
+                  <div class="meta">下载管线图片 → 视觉模型抽取</div>
                 </td>
                 <td>
                   <label class="enable-cell">
@@ -132,14 +133,21 @@
                     <span :class="row.enabled ? 'on' : 'off'">{{ row.enabled ? '启用中' : '已停用' }}</span>
                   </label>
                 </td>
-                <td class="meta">下载管线图片 → 视觉模型抽取（调度见下方）</td>
+                <td>
+                  <input
+                    v-model="pipeSourceUrl"
+                    type="url"
+                    class="wide"
+                    placeholder="https://www.simcere.com/kxcx/yggx.aspx"
+                  />
+                </td>
                 <td class="crawler-save-cell">
                   <button
                     type="button"
                     class="secondary"
                     :disabled="crawlerBusy === row.crawler_key || !isCrawlerDirty(row)"
                     @click="saveCrawler(row)"
-                  >{{ crawlerBusy === row.crawler_key ? '…' : (crawlerSavedKey === row.crawler_key ? '已保存' : '保存') }}</button>
+                  >{{ crawlerBusy === row.crawler_key ? '…' : '保存' }}</button>
                 </td>
               </tr>
             </tbody>
@@ -154,10 +162,6 @@
           中启用视觉模型后再同步管线。
         </p>
         <p v-else class="meta">视觉模型：{{ visionModel || '已就绪' }}</p>
-        <div class="field">
-          <label>来源 URL</label>
-          <input v-model="pipeSourceUrl" type="url" placeholder="https://www.simcere.com/kxcx/yggx.aspx" />
-        </div>
         <div class="field">
           <label>节奏</label>
           <div class="pipe-schedule-row">
@@ -194,6 +198,27 @@
       </template>
       <p v-if="crawlerMsg" class="meta" :class="{ 'form-error': crawlerErr }">{{ crawlerMsg }}</p>
     </section>
+
+    <Teleport to="body">
+      <div
+        v-if="feedbackDialog.open"
+        class="feedback-mask"
+        @click.self="closeFeedbackDialog"
+      >
+        <div
+          class="feedback-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawler-feedback-title"
+        >
+          <h3 id="crawler-feedback-title" :class="{ bad: feedbackDialog.error }">{{ feedbackDialog.title }}</h3>
+          <p>{{ feedbackDialog.message }}</p>
+          <div class="feedback-dialog-actions">
+            <button type="button" @click="closeFeedbackDialog">知道了</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- 关键词 -->
     <section v-show="activeTab === 'keywords'" class="card reveal">
@@ -253,7 +278,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import SystemConfigPanel from '../components/settings/SystemConfigPanel.vue'
@@ -277,10 +302,29 @@ const crawlerRows = ref([])
 const crawlerSnapshot = ref({})
 const crawlerLoading = ref(false)
 const crawlerBusy = ref('')
-const crawlerSavedKey = ref('')
 const crawlerMsg = ref('')
 const crawlerErr = ref(false)
-let crawlerSavedTimer = null
+const feedbackDialog = reactive({
+  open: false,
+  error: false,
+  title: '',
+  message: '',
+})
+
+function openFeedbackDialog({ error = false, title, message }) {
+  feedbackDialog.open = true
+  feedbackDialog.error = Boolean(error)
+  feedbackDialog.title = title
+  feedbackDialog.message = message
+}
+
+function closeFeedbackDialog() {
+  feedbackDialog.open = false
+}
+
+function onFeedbackEsc(e) {
+  if (e.key === 'Escape' && feedbackDialog.open) closeFeedbackDialog()
+}
 
 const crawlStatus = ref(null)
 const crawlMode = ref('hourly')
@@ -294,6 +338,7 @@ const crawlActionErr = ref(false)
 const visionReady = ref(false)
 const visionModel = ref('')
 const pipeSourceUrl = ref('https://www.simcere.com/kxcx/yggx.aspx')
+const pipeSourceUrlSnap = ref(pipeSourceUrl.value)
 const pipeMode = ref('manual')
 const pipeInterval = ref(60)
 const pipeDailyTime = ref('08:00')
@@ -335,10 +380,16 @@ function rememberCrawlerSnapshot(rows) {
   crawlerSnapshot.value = map
 }
 
+function isPipeSourceDirty() {
+  return String(pipeSourceUrl.value || '').trim() !== String(pipeSourceUrlSnap.value || '').trim()
+}
+
 function isCrawlerDirty(row) {
   const prev = crawlerSnapshot.value[row.crawler_key]
   if (!prev) return false
-  return prev !== crawlerSnapKey(row)
+  if (prev !== crawlerSnapKey(row)) return true
+  if ((row.kind || 'news') === 'pipeline') return isPipeSourceDirty()
+  return false
 }
 
 const kwCategory = ref('靶点')
@@ -384,6 +435,7 @@ function applyPipeConfig(cfg) {
   pipeDailyTime.value = cfg.daily_time || '08:00'
   pipeWeeklyDay.value = cfg.weekly_day ?? 0
   if (cfg.source_url) pipeSourceUrl.value = cfg.source_url
+  pipeSourceUrlSnap.value = pipeSourceUrl.value
 }
 
 function toggleCrawlSource(key) {
@@ -399,7 +451,6 @@ async function loadCrawlers() {
   crawlerMsg.value = ''
   crawlerErr.value = false
   crawlerLoading.value = true
-  crawlerSavedKey.value = ''
   try {
     const [data, status, vs, pipeCfg] = await Promise.all([
       api.adminCrawlers(),
@@ -566,15 +617,30 @@ async function saveCrawler(row) {
       ...crawlerSnapshot.value,
       [row.crawler_key]: crawlerSnapKey(row),
     }
-    crawlerMsg.value = `已保存「${row.name}」；下一轮采集生效`
-    crawlerSavedKey.value = row.crawler_key
-    if (crawlerSavedTimer) clearTimeout(crawlerSavedTimer)
-    crawlerSavedTimer = setTimeout(() => {
-      if (crawlerSavedKey.value === row.crawler_key) crawlerSavedKey.value = ''
-    }, 1800)
+    if ((row.kind || 'news') === 'pipeline') {
+      const cfg = await api.updatePipelineCrawlConfig({
+        running: pipeRunning.value,
+        schedule_mode: pipeMode.value,
+        interval_minutes: pipeInterval.value,
+        daily_time: pipeDailyTime.value,
+        weekly_day: pipeWeeklyDay.value,
+        source_url: pipeSourceUrl.value,
+        crawler_keys: [row.crawler_key],
+      })
+      applyPipeConfig(cfg)
+    }
+    openFeedbackDialog({
+      title: `已保存「${row.name || row.crawler_key}」`,
+      message: (row.kind || 'news') === 'pipeline'
+        ? '启用状态与来源 URL 已写入；下一轮同步生效。'
+        : '参数将在下一轮采集生效。',
+    })
   } catch (e) {
-    crawlerErr.value = true
-    crawlerMsg.value = e.message || '保存失败'
+    openFeedbackDialog({
+      error: true,
+      title: '爬虫配置保存失败',
+      message: e.message || '保存失败',
+    })
   } finally {
     crawlerBusy.value = ''
   }
@@ -711,11 +777,13 @@ watch(
 )
 
 onMounted(() => {
+  window.addEventListener('keydown', onFeedbackEsc)
   if (normalizeTab(route.query.tab) !== route.query.tab) {
     router.replace({ query: { ...route.query, tab: activeTab.value } })
   }
   ensureTabLoaded(activeTab.value)
 })
+onUnmounted(() => window.removeEventListener('keydown', onFeedbackEsc))
 </script>
 
 <style scoped>
@@ -787,10 +855,53 @@ onMounted(() => {
 .enable-cell .on { color: var(--moss); font-weight: 650; }
 .enable-cell .off { color: var(--ink-mute); }
 .crawler-save-cell {
+  width: 88px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.crawler-save-cell .secondary {
+  min-width: 64px;
+}
+.feedback-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 36, 32, 0.42);
+}
+.feedback-dialog {
+  width: min(360px, 100%);
+  padding: 20px 22px;
+  border: 1px solid var(--rule, var(--line));
+  border-radius: 10px;
+  background: var(--paper);
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
+}
+.feedback-dialog h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  color: var(--pine);
+}
+.feedback-dialog h3.bad { color: var(--clay); }
+.feedback-dialog p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.feedback-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.feedback-dialog-actions button {
+  padding: 6px 14px;
+  font-size: 13px;
 }
 .dirty-dot {
   font-size: 10px;

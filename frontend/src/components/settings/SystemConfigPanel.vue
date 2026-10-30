@@ -51,7 +51,6 @@
               <button type="button" class="key-toggle" :disabled="busy" @click="showKey.chat = !showKey.chat">{{ showKey.chat ? '隐藏' : '显示' }}</button>
             </div>
           </div>
-          <p v-if="slotMsg.chat" class="slot-msg" :class="{ 'form-error': slotErr.chat }">{{ slotMsg.chat }}</p>
         </article>
 
         <article class="slot-card">
@@ -86,7 +85,6 @@
             </div>
           </div>
           <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('embedding')">填入对话的地址与密钥</button>
-          <p v-if="slotMsg.embedding" class="slot-msg" :class="{ 'form-error': slotErr.embedding }">{{ slotMsg.embedding }}</p>
         </article>
 
         <article class="slot-card">
@@ -115,7 +113,6 @@
             </div>
           </div>
           <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('rerank')">填入对话的地址与密钥</button>
-          <p v-if="slotMsg.rerank" class="slot-msg" :class="{ 'form-error': slotErr.rerank }">{{ slotMsg.rerank }}</p>
         </article>
 
         <article class="slot-card">
@@ -144,7 +141,6 @@
             </div>
           </div>
           <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('vision')">填入对话的地址与密钥</button>
-          <p v-if="slotMsg.vision" class="slot-msg" :class="{ 'form-error': slotErr.vision }">{{ slotMsg.vision }}</p>
         </article>
       </div>
 
@@ -337,11 +333,33 @@
         </div>
       </aside>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="testDialog.open"
+        class="test-mask"
+        @click.self="closeTestDialog"
+        @keydown.esc="closeTestDialog"
+      >
+        <div
+          class="test-dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="'test-dialog-title'"
+        >
+          <h3 id="test-dialog-title" :class="{ bad: testDialog.error }">{{ testDialog.title }}</h3>
+          <p>{{ testDialog.message }}</p>
+          <div class="test-dialog-actions">
+            <button type="button" @click="closeTestDialog">知道了</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { api } from '../../api'
 import { useAsync } from '../../composables'
 import UiSelect from '../UiSelect.vue'
@@ -364,8 +382,6 @@ const editingId = ref(null)
 const selectedId = ref(null)
 const editBuf = reactive(blank())
 const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false })
-const slotMsg = reactive({ chat: '', embedding: '', rerank: '', vision: '' })
-const slotErr = reactive({ chat: false, embedding: false, rerank: false, vision: false })
 const keepFlags = reactive({
   chat: false,
   embedding: false,
@@ -375,6 +391,24 @@ const keepFlags = reactive({
 const modelError = ref('')
 const modelTestMsg = ref('')
 const modelTestErr = ref(false)
+const SLOT_LABEL = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉' }
+const testDialog = reactive({
+  open: false,
+  error: false,
+  title: '',
+  message: '',
+})
+
+function openTestDialog({ error = false, title, message }) {
+  testDialog.open = true
+  testDialog.error = Boolean(error)
+  testDialog.title = title
+  testDialog.message = message
+}
+
+function closeTestDialog() {
+  testDialog.open = false
+}
 
 const ragForm = reactive({
   top_k: 10,
@@ -662,12 +696,14 @@ async function activate(item, rebuild = false) {
 async function testSlot(slot) {
   const spec = SLOT_FIELD[slot]
   if (!spec) return
-  slotMsg[slot] = ''
-  slotErr[slot] = false
+  const label = SLOT_LABEL[slot] || '接口'
   const baseUrl = String(editBuf[spec.url] || '').trim()
   if (!baseUrl) {
-    slotErr[slot] = true
-    slotMsg[slot] = '请填写 API 地址'
+    openTestDialog({
+      error: true,
+      title: `${label}测试失败`,
+      message: '请先填写 API 地址再测试。',
+    })
     return
   }
   testBusy.value = slot
@@ -679,10 +715,16 @@ async function testSlot(slot) {
       profile_id: editingId.value === 'new' ? undefined : selectedProfile.value?.id,
       slot,
     })
-    slotMsg[slot] = '连接成功'
+    openTestDialog({
+      title: `${label}连接成功`,
+      message: `已成功连上${label}接口，可以继续保存配置。`,
+    })
   } catch (e) {
-    slotErr[slot] = true
-    slotMsg[slot] = e.message || '连接失败'
+    openTestDialog({
+      error: true,
+      title: `${label}测试失败`,
+      message: e.message || '连接失败，请检查地址与密钥。',
+    })
   } finally {
     busy.value = false
     testBusy.value = ''
@@ -828,9 +870,26 @@ async function saveModel() {
     await loadProfiles()
     const row = profiles.value.find((p) => p.id === targetId)
     if (row && !row.is_active) await activate(row)
-    if (!modelError.value) modelTestMsg.value = '四项配置已分别保存'
+    if (!modelError.value) {
+      openTestDialog({
+        title: '模型配置已保存',
+        message: '对话、嵌入、重排已写入；视觉可留空。当前组合已生效（若原先未启用会自动启用）。',
+      })
+    } else {
+      openTestDialog({
+        error: true,
+        title: '保存后启用失败',
+        message: modelError.value,
+      })
+    }
   } catch (e) {
-    modelError.value = e.message || '保存失败'
+    const msg = e.message || '保存失败'
+    modelError.value = msg
+    openTestDialog({
+      error: true,
+      title: '模型配置保存失败',
+      message: msg,
+    })
   } finally {
     busy.value = false
   }
@@ -876,9 +935,15 @@ watch(
   (v) => { rerankModel.value = v || '' },
 )
 
+function onEsc(e) {
+  if (e.key === 'Escape' && testDialog.open) closeTestDialog()
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', onEsc)
   await Promise.all([loadProfiles(), loadRag(), loadSmtp()])
 })
+onUnmounted(() => window.removeEventListener('keydown', onEsc))
 </script>
 
 <style scoped>
@@ -887,6 +952,47 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
   padding-bottom: 24px;
+}
+.test-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 36, 32, 0.42);
+}
+.test-dialog {
+  width: min(360px, 100%);
+  padding: 20px 22px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.test-dialog h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  color: var(--pine);
+}
+.test-dialog h3.bad { color: var(--clay); }
+.test-dialog p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.test-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.test-dialog-actions button {
+  padding: 6px 14px;
+  font-size: 13px;
 }
 .sys-hero { margin: 0 0 4px; }
 .sys-title {
@@ -1004,7 +1110,7 @@ onMounted(async () => {
   padding: 14px;
   border: 1px solid var(--rule);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: color-mix(in srgb, var(--paper) 72%, var(--wash));
 }
 .slot-head {
   display: flex;
@@ -1073,7 +1179,6 @@ onMounted(async () => {
   transform: none;
   box-shadow: none;
 }
-.slot-msg { margin: 0; font-size: var(--fs-xs); color: var(--pine); }
 .studio-foot {
   display: flex;
   flex-direction: column;
