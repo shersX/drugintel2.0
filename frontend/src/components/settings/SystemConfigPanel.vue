@@ -142,6 +142,34 @@
           </div>
           <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('vision')">填入对话的地址与密钥</button>
         </article>
+
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>实体抽取</h4>
+              <p>新闻 NER，默认 Qwen3-8B</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('entity')">
+              {{ testBusy === 'entity' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="field">
+            <label>模型</label>
+            <input v-model="editBuf.entity_model" class="mono" type="text" placeholder="Qwen/Qwen3-8B" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.entity_base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.entity ? '已保存，留空不改' : '可继承对话密钥' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.entity_api_key" class="mono" :type="showKey.entity ? 'text' : 'password'" autocomplete="off" :placeholder="entityKeyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.entity = !showKey.entity">{{ showKey.entity ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('entity')">填入对话的地址与密钥</button>
+        </article>
       </div>
 
       <div v-if="selectedDimMismatch || modelError || modelTestMsg" class="studio-foot">
@@ -381,17 +409,18 @@ const revision = ref(0)
 const editingId = ref(null)
 const selectedId = ref(null)
 const editBuf = reactive(blank())
-const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false })
+const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false, entity: false })
 const keepFlags = reactive({
   chat: false,
   embedding: false,
   rerank: false,
   vision: false,
+  entity: false,
 })
 const modelError = ref('')
 const modelTestMsg = ref('')
 const modelTestErr = ref(false)
-const SLOT_LABEL = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉' }
+const SLOT_LABEL = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉', entity: '实体抽取' }
 const testDialog = reactive({
   open: false,
   error: false,
@@ -463,6 +492,7 @@ const keyPlaceholder = computed(() => (keepFlags.chat ? '已保存，留空不�
 const embedKeyPlaceholder = computed(() => (keepFlags.embedding ? '已保存，留空不改' : 'sk-...'))
 const rerankKeyPlaceholder = computed(() => (keepFlags.rerank ? '已保存，留空不改' : 'sk-...'))
 const visionKeyPlaceholder = computed(() => (keepFlags.vision ? '已保存，留空不改' : '可选'))
+const entityKeyPlaceholder = computed(() => (keepFlags.entity ? '已保存，留空不改' : '可继承对话'))
 const ragBm25Weight = computed(() => {
   const w = Number(ragForm.hybrid_vector_weight)
   if (!Number.isFinite(w)) return '—'
@@ -498,6 +528,9 @@ function blank() {
     vision_api_key: '',
     vision_base_url: 'https://api.siliconflow.cn/v1',
     vision_model: '',
+    entity_api_key: '',
+    entity_base_url: 'https://api.siliconflow.cn/v1',
+    entity_model: 'Qwen/Qwen3-8B',
   }
 }
 
@@ -523,10 +556,14 @@ function fillEditBufFrom(source, { isNew = false } = {}) {
   editBuf.vision_api_key = ''
   editBuf.vision_base_url = source.vision_base_url || ''
   editBuf.vision_model = source.vision_model || ''
+  editBuf.entity_api_key = ''
+  editBuf.entity_base_url = source.entity_base_url || source.base_url || ''
+  editBuf.entity_model = source.entity_model || 'Qwen/Qwen3-8B'
   keepFlags.chat = !isNew && Boolean(source.has_chat_key)
   keepFlags.embedding = !isNew && Boolean(source.has_embedding_key)
   keepFlags.rerank = !isNew && Boolean(source.has_reranker_key)
   keepFlags.vision = !isNew && Boolean(source.has_vision_key)
+  keepFlags.entity = !isNew && Boolean(source.has_entity_key)
   rerankModel.value = editBuf.reranker_model || ''
 }
 
@@ -548,9 +585,12 @@ function buildPayload() {
     reranker_model: (rerankModel.value || editBuf.reranker_model || '').trim(),
     vision_base_url: editBuf.vision_base_url.trim(),
     vision_model: editBuf.vision_model.trim(),
+    entity_base_url: editBuf.entity_base_url.trim(),
+    entity_model: editBuf.entity_model.trim() || 'Qwen/Qwen3-8B',
     embedding_api_key: editBuf.embedding_api_key,
     reranker_api_key: editBuf.reranker_api_key,
     vision_api_key: editBuf.vision_api_key,
+    entity_api_key: editBuf.entity_api_key,
   }
 }
 
@@ -576,6 +616,7 @@ const SLOT_FIELD = {
   embedding: { url: 'embedding_base_url', key: 'embedding_api_key' },
   rerank: { url: 'reranker_base_url', key: 'reranker_api_key' },
   vision: { url: 'vision_base_url', key: 'vision_api_key' },
+  entity: { url: 'entity_base_url', key: 'entity_api_key' },
 }
 
 function copyChatInto(slot) {

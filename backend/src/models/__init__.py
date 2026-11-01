@@ -12,6 +12,7 @@ from backend.src.models.entities import (
     DrugDevelopmentEvent,
     Watchlist,
 )
+from backend.src.models.entity_lexicon import EntityLexicon, EntityWatchlist
 from backend.src.models.event import Event
 from backend.src.models.filter_keyword import FilterKeyword
 from backend.src.models.llm_profile import LlmProfile
@@ -30,6 +31,8 @@ __all__ = [
     "Base",
     "News",
     "Event",
+    "EntityLexicon",
+    "EntityWatchlist",
     "Company",
     "Drug",
     "DrugDevelopmentEvent",

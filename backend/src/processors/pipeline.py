@@ -128,6 +128,24 @@ async def _enrich_items(
     stats["after_summary"] = len(summarized)
     _emit(progress, stage="summary", label="摘要完成", items_out=len(summarized))
 
+    _emit(progress, stage="entity", label="实体抽取", items_in=len(summarized))
+    try:
+        from backend.src.entities.extract import extract_and_normalize_items
+
+        summarized = await extract_and_normalize_items(summarized)
+        stats["after_entity"] = len(summarized)
+    except Exception as exc:
+        logger.exception("实体抽取失败，继续向量化: %s", exc)
+        stats["entity_error"] = str(exc)
+        for item in summarized:
+            item.setdefault("products", [])
+            item.setdefault("drugs", [])
+            item.setdefault("orgs", [])
+            item.setdefault("targets", [])
+            item.setdefault("indications", [])
+            item.setdefault("story_type", "other")
+    _emit(progress, stage="entity", label="实体完成", items_out=len(summarized))
+
     _emit(progress, stage="embedding", label="生成向量", items_in=len(summarized))
     if skip_embedding:
         embedded = list(summarized)

@@ -106,6 +106,9 @@ class LlmProfileWrite(BaseModel):
     vision_api_key: Optional[str] = None
     vision_base_url: str = ""
     vision_model: str = ""
+    entity_api_key: Optional[str] = None
+    entity_base_url: str = ""
+    entity_model: str = "Qwen/Qwen3-8B"
     rebuild: bool = False
 
 
@@ -115,6 +118,28 @@ class LlmProfileTest(BaseModel):
     profile_id: Optional[int] = None
     slot: str = "chat"
     include_models: bool = False
+
+
+class EntityCreate(BaseModel):
+    entity_type: str
+    canonical: str = Field(..., min_length=1, max_length=200)
+    aliases: List[str] = []
+    status: str = "active"
+
+
+class EntityUpdate(BaseModel):
+    canonical: Optional[str] = Field(None, min_length=1, max_length=200)
+    aliases: Optional[List[str]] = None
+    status: Optional[str] = None
+
+
+class EntityMergeRequest(BaseModel):
+    keep_id: int
+    drop_id: int
+
+
+class EntityWatchRequest(BaseModel):
+    entity_id: int
 
 
 class PipelineCrawlConfigUpdate(BaseModel):

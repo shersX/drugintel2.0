@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
+
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.models.base import Base
@@ -22,6 +24,13 @@ class Event(Base):
     centroid_embedding = mapped_column(Vector(), nullable=True)
     news_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     representative_news_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    products: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    orgs: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    story_types: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    ci_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    burst_prob: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    score_components: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

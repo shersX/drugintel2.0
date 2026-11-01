@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
@@ -36,5 +36,12 @@ class News(Base, TimestampMixin):
     event_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("event.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    products: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    drugs: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    orgs: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    targets: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    indications: Mapped[Optional[list]] = mapped_column(JSONB, nullable=False, default=list)
+    entity_raw: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    story_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
 
     event = relationship("Event", back_populates="news_items", foreign_keys=[event_id])

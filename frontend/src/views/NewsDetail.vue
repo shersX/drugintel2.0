@@ -38,6 +38,21 @@
           </div>
         </header>
 
+        <section v-if="entityGroups.length" class="entity-block reveal" style="--reveal-delay:40ms">
+          <div class="q-src">实体 · {{ news.story_type || 'other' }}</div>
+          <div class="entity-rows">
+            <div v-for="g in entityGroups" :key="g.label" class="entity-row">
+              <span class="entity-label">{{ g.label }}</span>
+              <router-link
+                v-for="v in g.values"
+                :key="g.key + v"
+                class="entity-chip"
+                :to="{ path: '/news', query: { [g.key]: v } }"
+              >{{ v }}</router-link>
+            </div>
+          </div>
+        </section>
+
         <section v-if="news.abstract" class="abstract-block reveal" style="--reveal-delay:80ms">
           <div class="q-src">AI 摘要</div>
           <div class="abstract-md" v-html="abstractHtml" />
@@ -58,6 +73,15 @@
           <div class="aside-head"><span class="no">※</span> 命中关键词</div>
           <div class="aside-pills">
             <span v-for="k in matchedList" :key="k" class="pill">{{ k }}</span>
+          </div>
+        </section>
+
+        <section v-if="news.event" class="aside-block">
+          <div class="aside-head"><span class="no">※</span> 事件风险分</div>
+          <div class="risk-box">
+            <strong>{{ news.event.ci_risk_score != null ? Number(news.event.ci_risk_score).toFixed(2) : '—' }}</strong>
+            <p class="meta">{{ news.event.disclaimer }}</p>
+            <router-link v-if="news.event_id" :to="`/events`">查看事件簇</router-link>
           </div>
         </section>
 
@@ -163,8 +187,23 @@ const matchedList = computed(() => {
     .filter(Boolean)
 })
 
+const entityGroups = computed(() => {
+  const n = news.value
+  if (!n) return []
+  const groups = [
+    { key: 'product', label: '产品', values: n.products || [] },
+    { key: 'org', label: '企业', values: n.orgs || [] },
+    { key: 'target', label: '靶点', values: n.targets || [] },
+    { key: 'indication', label: '适应症', values: n.indications || [] },
+    { key: 'q', label: '成分', values: n.drugs || [] },
+  ]
+  return groups.filter((g) => g.values.length)
+})
+
 const hasAside = computed(() =>
-  matchedList.value.length > 0 || Boolean(news.value?.related_news?.length),
+  matchedList.value.length > 0
+  || Boolean(news.value?.related_news?.length)
+  || Boolean(news.value?.event),
 )
 
 const abstractHtml = computed(() => {
@@ -486,4 +525,15 @@ watch(() => props.id, load)
     border-top: 1px solid var(--rule);
   }
 }
+
+.entity-block { margin: 12px 0 18px; }
+.entity-rows { display: grid; gap: 8px; }
+.entity-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.entity-label { font-size: 12px; color: var(--muted, #6b7280); min-width: 3.5em; }
+.entity-chip {
+  font-size: 12px; padding: 2px 10px; border-radius: 999px;
+  background: #eef2ff; color: inherit; text-decoration: none;
+}
+.entity-chip:hover { background: #e0e7ff; }
+.risk-box strong { font-size: 22px; display: block; margin-bottom: 4px; }
 </style>

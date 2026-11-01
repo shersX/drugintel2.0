@@ -1,0 +1,24 @@
+# 阶段先验成功概率（文献量级基准，非本系统预测模型）
+# 参考量级：BIO / CMR 公开讨论的 Phase→Approval 粗基准，仅供 CI 展示
+# 数值为到批准上市的粗略先验，会随公开基准更新；UI 须标注「非临床 LoA」
+source: "illustrative BIO/CMR-order phase-to-approval priors for CI display"
+updated: "2026-04"
+priors:
+  discovery: 0.05
+  preclinical: 0.08
+  phase1: 0.10
+  phase2: 0.20
+  phase3: 0.50
+  filed: 0.70
+  approved: 0.95
+  discontinued: 0.02
+  unknown: 0.15
+story_type_weights:
+  safety: 0.95
+  regulatory: 0.85
+  clinical: 0.70
+  deal: 0.65
+  pipeline: 0.55
+  financing: 0.50
+  conference: 0.35
+  other: 0.40

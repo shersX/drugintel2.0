@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from './views/Dashboard.vue'
 import NewsList from './views/NewsList.vue'
 import NewsDetail from './views/NewsDetail.vue'
+import Events from './views/Events.vue'
 import Chat from './views/Chat.vue'
 import Alerts from './views/Alerts.vue'
 import PipelineList from './views/PipelineList.vue'
@@ -21,6 +22,7 @@ const router = createRouter({
     { path: '/', component: Dashboard, meta: { public: true, module: 'dashboard' } },
     { path: '/news', component: NewsList, meta: { public: true, module: 'news' } },
     { path: '/news/:id', component: NewsDetail, props: true, meta: { public: true, module: 'news' } },
+    { path: '/events', component: Events, meta: { public: true, module: 'news' } },
     { path: '/chat', component: Chat, meta: { public: true, module: 'chat' } },
     { path: '/alerts', component: Alerts, meta: { module: 'alerts' } },
     { path: '/pipeline', component: PipelineList, meta: { module: 'pipeline' } },

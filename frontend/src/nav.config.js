@@ -16,7 +16,11 @@ export const TOP_MODULES = [
     key: 'news',
     label: '情报流',
     to: '/news',
-    match: (route) => route.path === '/news' || route.path.startsWith('/news/'),
+    match: (route) =>
+      route.path === '/news'
+      || route.path.startsWith('/news/')
+      || route.path === '/events'
+      || route.path.startsWith('/events/'),
     sidebar: true,
     auth: null,
   },
@@ -60,7 +64,8 @@ export const TOP_MODULES = [
 /** 二级导航：按一级 module key 索引 */
 export const SIDE_ITEMS = {
   news: [
-    { key: 'news-all', label: '全部情报', to: '/news', icon: 'list', match: (r) => r.path === '/news' || r.path.startsWith('/news/') },
+    { key: 'news-all', label: '全部情报', to: '/news', icon: 'list', match: (r) => r.path === '/news' || (r.path.startsWith('/news/') && r.path !== '/events') },
+    { key: 'news-events', label: '事件簇', to: '/events', icon: 'grid', match: (r) => r.path === '/events' || r.path.startsWith('/events/') },
   ],
   pipeline: [
     { key: 'pipe-overview', label: '管线总览', to: '/pipeline', icon: 'grid', match: (r) => r.path === '/pipeline' || r.path.startsWith('/pipeline/') },
@@ -97,6 +102,7 @@ export const SIDE_ITEMS = {
       match: (r) => r.path === '/monitor',
     },
     { key: 'admin-keywords', label: '过滤关键词', to: '/settings?tab=keywords', icon: 'tag', match: (r) => r.path === '/settings' && r.query.tab === 'keywords' },
+    { key: 'admin-entities', label: '实体词典', to: '/settings?tab=entities', icon: 'tag', match: (r) => r.path === '/settings' && r.query.tab === 'entities' },
     { key: 'admin-users', label: '用户与权限', to: '/users', icon: 'users', match: (r) => r.path === '/users' },
   ],
 }

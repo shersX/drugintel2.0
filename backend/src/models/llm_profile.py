@@ -26,4 +26,7 @@ class LlmProfile(Base):
     vision_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vision_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     vision_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    entity_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    entity_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    entity_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

@@ -9,6 +9,11 @@
         {{ stageLabel(form.current_stage) }}
         <span v-if="asset?.review_status" class="rev">· {{ reviewLabel(asset.review_status) }}</span>
       </p>
+      <p v-if="asset?.stage_prior" class="pos-badge meta">
+        阶段先验 PoS：
+        <strong>{{ Number(asset.stage_prior.adjusted_pos ?? asset.stage_prior.prior_pos).toFixed(2) }}</strong>
+        <span>（{{ asset.stage_prior.disclaimer }}）</span>
+      </p>
     </header>
 
     <p v-if="error" class="form-error">{{ error }}</p>

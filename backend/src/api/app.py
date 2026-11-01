@@ -50,6 +50,10 @@ from backend.src.api.schemas import (
     ConversationRename,
     CrawlerSettingUpdate,
     CrawlStartRequest,
+    EntityCreate,
+    EntityMergeRequest,
+    EntityUpdate,
+    EntityWatchRequest,
     FilterKeywordCreate,
     FilterKeywordUpdate,
     KeywordReimportRequest,
@@ -70,7 +74,7 @@ from backend.src.api.schemas import (
     SmtpTestRequest,
     WatchlistCreate,
 )
-from backend.src.clustering.service import run_clustering
+from backend.src.clustering.service import rescore_events, run_clustering
 from backend.src.core.logger import get_logger
 from backend.src.crawl.schedule import (
     CrawlConfigError,
@@ -321,6 +325,13 @@ def api_news_list(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     q: Optional[str] = None,
+    story_type: Optional[str] = None,
+    product: Optional[str] = None,
+    org: Optional[str] = None,
+    target: Optional[str] = None,
+    indication: Optional[str] = None,
+    watched_only: bool = False,
+    request: Request = None,
 ):
     from sqlalchemy import func
     from backend.src.crawlers.registry import news_crawler_keys
@@ -334,9 +345,11 @@ def api_news_list(
         raise HTTPException(status_code=400, detail="未知来源（管线爬虫不可用于新闻筛选）")
     start = _shanghai_day_start(date_from) if date_from else None
     end = _shanghai_day_start(date_to) + timedelta(days=1) if date_to else None
+    actor = resolve_actor(request.cookies.get(COOKIE_NAME)) if request is not None else None
 
     with session_scope() as session:
         from backend.src.db.crud.news import news_ready_filter
+        from backend.src.models.entity_lexicon import EntityLexicon, EntityWatchlist
 
         base = select(News).where(news_ready_filter())
         if keys:
@@ -349,6 +362,39 @@ def api_news_list(
         if term:
             like = _like_term(term)
             base = base.where(or_(News.title.ilike(like), News.abstract.ilike(like)))
+        if story_type:
+            base = base.where(News.story_type == story_type.strip().lower())
+        for col, val in (
+            (News.products, product),
+            (News.orgs, org),
+            (News.targets, target),
+            (News.indications, indication),
+        ):
+            if val and str(val).strip():
+                base = base.where(col.contains([str(val).strip().lower()]))
+        watch_cans: set[str] = set()
+        if actor is not None:
+            wrows = session.scalars(
+                select(EntityLexicon)
+                .join(EntityWatchlist, EntityWatchlist.entity_id == EntityLexicon.id)
+                .where(EntityWatchlist.user_id == actor.id)
+            ).all()
+            watch_cans = {r.canonical for r in wrows}
+        if watched_only:
+            if not watch_cans:
+                return ok({"total": 0, "page": page, "page_size": page_size, "items": []})
+            clauses = []
+            for can in watch_cans:
+                clauses.extend(
+                    [
+                        News.products.contains([can]),
+                        News.orgs.contains([can]),
+                        News.drugs.contains([can]),
+                        News.targets.contains([can]),
+                        News.indications.contains([can]),
+                    ]
+                )
+            base = base.where(or_(*clauses))
         total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
         rows = session.scalars(
             base.order_by(News.publish_time.desc().nulls_last(), News.id.desc())
@@ -366,6 +412,22 @@ def api_news_list(
                 "detail_url": n.detail_url,
                 "event_id": n.event_id,
                 "is_representative": n.is_representative,
+                "products": n.products or [],
+                "drugs": n.drugs or [],
+                "orgs": n.orgs or [],
+                "targets": n.targets or [],
+                "indications": n.indications or [],
+                "story_type": n.story_type,
+                "watched": bool(
+                    watch_cans
+                    and (
+                        watch_cans & set(n.products or [])
+                        or watch_cans & set(n.orgs or [])
+                        or watch_cans & set(n.drugs or [])
+                        or watch_cans & set(n.targets or [])
+                        or watch_cans & set(n.indications or [])
+                    )
+                ),
             }
             for n in rows
         ]
@@ -381,15 +443,40 @@ def api_news_detail(news_id: int):
         if news is None or news.process_status != PROCESS_READY:
             raise HTTPException(404, "news not found")
         related = []
+        event_payload = None
         if news.event_id:
             related_rows = session.scalars(
                 select(News)
                 .where(News.event_id == news.event_id)
                 .where(News.id != news.id)
                 .where(news_ready_filter())
-                .limit(20)
+                .order_by(News.publish_time.asc().nulls_last())
+                .limit(50)
             ).all()
-            related = [{"id": r.id, "title": r.title} for r in related_rows]
+            related = [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "publish_time": format_publish_time_cn(r.publish_time),
+                    "story_type": r.story_type,
+                    "products": r.products or [],
+                }
+                for r in related_rows
+            ]
+            event = session.get(Event, news.event_id)
+            if event is not None:
+                event_payload = {
+                    "id": event.id,
+                    "title": event.title,
+                    "products": event.products or [],
+                    "orgs": event.orgs or [],
+                    "story_types": event.story_types or [],
+                    "ci_risk_score": event.ci_risk_score,
+                    "burst_prob": event.burst_prob,
+                    "score_components": event.score_components,
+                    "news_count": event.news_count,
+                    "disclaimer": "情报关注/风险评分，非药物临床成功概率",
+                }
         return ok(
             {
                 "id": news.id,
@@ -404,7 +491,15 @@ def api_news_detail(news_id: int):
                 "matched_keywords": news.matched_keywords,
                 "event_id": news.event_id,
                 "is_representative": news.is_representative,
+                "products": news.products or [],
+                "drugs": news.drugs or [],
+                "orgs": news.orgs or [],
+                "targets": news.targets or [],
+                "indications": news.indications or [],
+                "entity_raw": news.entity_raw,
+                "story_type": news.story_type,
                 "related_news": related,
+                "event": event_payload,
             }
         )
 
@@ -412,7 +507,7 @@ def api_news_detail(news_id: int):
 @app.get("/api/events")
 def api_events(page: int = 1, page_size: int = 20):
     with session_scope() as session:
-        stmt = select(Event).order_by(Event.updated_at.desc())
+        stmt = select(Event).order_by(Event.ci_risk_score.desc().nulls_last(), Event.updated_at.desc())
         rows = session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
         items = [
             {
@@ -421,6 +516,12 @@ def api_events(page: int = 1, page_size: int = 20):
                 "summary": e.summary,
                 "news_count": e.news_count,
                 "representative_news_id": e.representative_news_id,
+                "products": e.products or [],
+                "orgs": e.orgs or [],
+                "story_types": e.story_types or [],
+                "status": e.status,
+                "ci_risk_score": e.ci_risk_score,
+                "burst_prob": e.burst_prob,
                 "updated_at": str(e.updated_at) if e.updated_at else None,
             }
             for e in rows
@@ -428,9 +529,205 @@ def api_events(page: int = 1, page_size: int = 20):
         return ok({"items": items, "page": page, "page_size": page_size})
 
 
+@app.get("/api/events/{event_id}")
+def api_event_detail(event_id: int):
+    from backend.src.db.crud.news import news_ready_filter
+
+    with session_scope() as session:
+        event = session.get(Event, event_id)
+        if event is None:
+            raise HTTPException(404, "event not found")
+        members = session.scalars(
+            select(News)
+            .where(News.event_id == event.id)
+            .where(news_ready_filter())
+            .order_by(News.publish_time.asc().nulls_last(), News.id.asc())
+        ).all()
+        return ok(
+            {
+                "id": event.id,
+                "title": event.title,
+                "summary": event.summary,
+                "news_count": event.news_count,
+                "products": event.products or [],
+                "orgs": event.orgs or [],
+                "story_types": event.story_types or [],
+                "status": event.status,
+                "ci_risk_score": event.ci_risk_score,
+                "burst_prob": event.burst_prob,
+                "score_components": event.score_components,
+                "disclaimer": "情报关注/风险评分，非药物临床成功概率",
+                "timeline": [
+                    {
+                        "id": m.id,
+                        "title": m.title,
+                        "publish_time": format_publish_time_cn(m.publish_time),
+                        "story_type": m.story_type,
+                        "products": m.products or [],
+                        "orgs": m.orgs or [],
+                        "is_representative": m.is_representative,
+                    }
+                    for m in members
+                ],
+            }
+        )
+
+
 @app.post("/api/cluster/run")
 def api_cluster_run(_actor: Actor = Depends(admin_actor)):
     return ok(run_clustering())
+
+
+@app.post("/api/cluster/score")
+def api_cluster_score(_actor: Actor = Depends(admin_actor)):
+    return ok(rescore_events())
+
+
+@app.get("/api/entities")
+def api_entities(
+    entity_type: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    _actor: Actor = Depends(admin_actor),
+):
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        return ok(
+            lex.list_entities(
+                session,
+                entity_type=entity_type,
+                status=status,
+                q=q,
+                limit=page_size,
+                offset=(page - 1) * page_size,
+            )
+        )
+
+
+@app.post("/api/entities")
+def api_entities_create(body: EntityCreate, actor: Actor = Depends(admin_actor)):
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        try:
+            row = lex.create_entity(
+                session,
+                entity_type=body.entity_type,
+                canonical=body.canonical,
+                aliases=body.aliases,
+                source="manual",
+                status=body.status or "active",
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        record_audit(actor_id=actor.id, action="entity_create", target=f"entity:{row.id}")
+        return ok(lex._public(row))
+
+
+@app.patch("/api/entities/{entity_id}")
+def api_entities_update(entity_id: int, body: EntityUpdate, actor: Actor = Depends(admin_actor)):
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        try:
+            row = lex.update_entity(
+                session,
+                entity_id,
+                canonical=body.canonical,
+                aliases=body.aliases,
+                status=body.status,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        record_audit(actor_id=actor.id, action="entity_update", target=f"entity:{entity_id}")
+        return ok(lex._public(row))
+
+
+@app.post("/api/entities/merge")
+def api_entities_merge(body: EntityMergeRequest, actor: Actor = Depends(admin_actor)):
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        try:
+            row = lex.merge_entities(session, body.keep_id, body.drop_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        record_audit(
+            actor_id=actor.id,
+            action="entity_merge",
+            target=f"entity:{body.keep_id}",
+            detail=f"drop={body.drop_id}",
+        )
+        return ok(lex._public(row))
+
+
+@app.post("/api/entities/import-keywords")
+def api_entities_import(actor: Actor = Depends(admin_actor)):
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        stats = lex.seed_all(session)
+    record_audit(actor_id=actor.id, action="entity_import", target="entity_lexicon", detail=str(stats))
+    return ok(stats)
+
+
+@app.get("/api/entity-watchlist")
+def api_entity_watchlist(actor: Actor = Depends(current_actor)):
+    from backend.src.models.entity_lexicon import EntityLexicon, EntityWatchlist
+    from backend.src.entities import lexicon as lex
+
+    with session_scope() as session:
+        rows = session.scalars(
+            select(EntityWatchlist).where(EntityWatchlist.user_id == actor.id)
+        ).all()
+        items = []
+        for w in rows:
+            ent = session.get(EntityLexicon, w.entity_id)
+            if ent is None:
+                continue
+            payload = lex._public(ent)
+            payload["watch_id"] = w.id
+            items.append(payload)
+        return ok({"items": items})
+
+
+@app.post("/api/entity-watchlist")
+def api_entity_watch_add(body: EntityWatchRequest, actor: Actor = Depends(current_actor)):
+    from backend.src.models.entity_lexicon import EntityLexicon, EntityWatchlist
+
+    with session_scope() as session:
+        ent = session.get(EntityLexicon, body.entity_id)
+        if ent is None:
+            raise HTTPException(404, "实体不存在")
+        existing = session.scalar(
+            select(EntityWatchlist).where(
+                EntityWatchlist.user_id == actor.id,
+                EntityWatchlist.entity_id == body.entity_id,
+            )
+        )
+        if existing is None:
+            session.add(EntityWatchlist(user_id=actor.id, entity_id=body.entity_id))
+            session.flush()
+        return ok({"entity_id": body.entity_id})
+
+
+@app.delete("/api/entity-watchlist/{entity_id}")
+def api_entity_watch_del(entity_id: int, actor: Actor = Depends(current_actor)):
+    from backend.src.models.entity_lexicon import EntityWatchlist
+
+    with session_scope() as session:
+        row = session.scalar(
+            select(EntityWatchlist).where(
+                EntityWatchlist.user_id == actor.id,
+                EntityWatchlist.entity_id == entity_id,
+            )
+        )
+        if row is not None:
+            session.delete(row)
+        return ok({"deleted": entity_id})
 
 
 @app.get("/api/chat/conversations")
@@ -795,6 +1092,9 @@ def api_llm_profile_create(body: LlmProfileWrite, actor: Actor = Depends(admin_a
                 vision_api_key=body.vision_api_key or "",
                 vision_base_url=body.vision_base_url or "",
                 vision_model=body.vision_model or "",
+                entity_api_key=body.entity_api_key or "",
+                entity_base_url=body.entity_base_url or "",
+                entity_model=body.entity_model or "",
             )
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
@@ -852,6 +1152,9 @@ def api_llm_profile_update(profile_id: int, body: LlmProfileWrite, actor: Actor 
                 vision_api_key=body.vision_api_key,
                 vision_base_url=body.vision_base_url or "",
                 vision_model=body.vision_model or "",
+                entity_api_key=body.entity_api_key,
+                entity_base_url=body.entity_base_url or "",
+                entity_model=body.entity_model or "",
                 rebuild=body.rebuild,
             )
     except LlmProfileError as exc:
@@ -1009,12 +1312,15 @@ def api_pipeline_asset_create(
 @app.get("/api/pipeline/assets/{asset_id}")
 def api_pipeline_asset_detail(asset_id: int, _actor: Actor = Depends(current_actor)):
     from backend.src.pipeline_intel.queries import get_asset
+    from backend.src.scoring.ci_risk import adjust_prior_with_signals, stage_prior_pos
 
     with session_scope() as session:
         data = get_asset(session, asset_id)
-    if data is None:
-        raise HTTPException(status_code=404, detail="管线资产不存在")
-    return ok(data)
+        if data is None:
+            raise HTTPException(status_code=404, detail="管线资产不存在")
+        prior = stage_prior_pos(data.get("current_stage"))
+        data["stage_prior"] = adjust_prior_with_signals(prior)
+        return ok(data)
 
 
 @app.patch("/api/pipeline/assets/{asset_id}")

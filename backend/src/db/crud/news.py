@@ -181,6 +181,13 @@ def update_news_enrichment(
             row.abstract = item.get("abstract")
         if "embedding" in item:
             row.embedding = item.get("embedding")
+        for field in ("products", "drugs", "orgs", "targets", "indications"):
+            if field in item:
+                setattr(row, field, list(item.get(field) or []))
+        if "entity_raw" in item:
+            row.entity_raw = item.get("entity_raw")
+        if "story_type" in item:
+            row.story_type = item.get("story_type")
         try:
             _update_row_search_tsv(
                 session,

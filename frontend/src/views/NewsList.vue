@@ -13,6 +13,13 @@
         @keydown.enter="applySearch"
       />
       <button class="secondary" :disabled="loading" @click="applySearch">搜索</button>
+      <select v-model="storyType" @change="applySearch" aria-label="事件类型">
+        <option value="">全部类型</option>
+        <option v-for="t in storyTypes" :key="t" :value="t">{{ t }}</option>
+      </select>
+      <input v-model="productFilter" type="search" placeholder="产品" aria-label="产品" @keydown.enter="applySearch" />
+      <input v-model="orgFilter" type="search" placeholder="企业" aria-label="企业" @keydown.enter="applySearch" />
+      <label class="watch-only"><input type="checkbox" v-model="watchedOnly" @change="applySearch" /> 仅关注</label>
       <div class="picker" ref="sourcePicker">
         <button
           type="button"
@@ -111,9 +118,18 @@
             <b>{{ crawlerLabel(n.crawler) }}</b>
             <i class="dot"></i>
             <span class="time">{{ formatDateTimeMinute(n.publish_time) }}</span>
+            <template v-if="n.story_type">
+              <i class="dot"></i>
+              <span>{{ n.story_type }}</span>
+            </template>
+            <span v-if="n.watched" class="watch-flag">关注</span>
           </span>
           <h3 class="entry-title">{{ n.title }}</h3>
           <p class="entry-abstract">{{ plainAbstract(n.abstract) || '暂无摘要' }}</p>
+          <span class="entry-chips" v-if="(n.products || []).length || (n.orgs || []).length">
+            <span v-for="p in (n.products || []).slice(0, 3)" :key="p" class="mini-chip">{{ p }}</span>
+            <span v-for="o in (n.orgs || []).slice(0, 2)" :key="o" class="mini-chip muted">{{ o }}</span>
+          </span>
         </span>
         <span class="entry-go" aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -163,6 +179,17 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const appliedDateFrom = ref('')
 const appliedDateTo = ref('')
+const storyTypes = ['clinical', 'regulatory', 'deal', 'financing', 'pipeline', 'conference', 'safety', 'other']
+const storyType = ref('')
+const productFilter = ref('')
+const orgFilter = ref('')
+const watchedOnly = ref(false)
+const appliedStoryType = ref('')
+const appliedProduct = ref('')
+const appliedOrg = ref('')
+const appliedTarget = ref('')
+const appliedIndication = ref('')
+const appliedWatched = ref(false)
 const sourceOpen = ref(false)
 const sourcePicker = ref(null)
 const dateOpen = ref(false)
@@ -173,7 +200,14 @@ const viewMonth = ref(new Date().getMonth() + 1)
 const weekdays = ['一', '二', '三', '四', '五', '六', '日']
 const { loading, error, run } = useAsync()
 const filtered = computed(() => Boolean(
-  appliedKeyword.value || appliedSources.value.length || appliedDateFrom.value || appliedDateTo.value,
+  appliedKeyword.value
+  || appliedSources.value.length
+  || appliedDateFrom.value
+  || appliedDateTo.value
+  || appliedStoryType.value
+  || appliedProduct.value
+  || appliedOrg.value
+  || appliedWatched.value,
 ))
 const sourceLabel = computed(() => {
   if (!selectedSources.value.length) return '来源'
@@ -230,6 +264,12 @@ async function load() {
     crawlers: appliedSources.value,
     dateFrom: appliedDateFrom.value,
     dateTo: appliedDateTo.value,
+    storyType: appliedStoryType.value,
+    product: appliedProduct.value,
+    org: appliedOrg.value,
+    target: appliedTarget.value,
+    indication: appliedIndication.value,
+    watchedOnly: appliedWatched.value,
   }))
   if (data) {
     items.value = data.items || []
@@ -243,6 +283,10 @@ function applySearch() {
   appliedSources.value = [...selectedSources.value]
   appliedDateFrom.value = dateFrom.value
   appliedDateTo.value = dateTo.value
+  appliedStoryType.value = storyType.value
+  appliedProduct.value = productFilter.value.trim().toLowerCase()
+  appliedOrg.value = orgFilter.value.trim().toLowerCase()
+  appliedWatched.value = Boolean(watchedOnly.value)
   sourceOpen.value = false
   dateOpen.value = false
   page.value = 1
@@ -324,18 +368,41 @@ function go(p) {
 }
 
 function syncQueryKeyword() {
+  let changed = false
   const q = typeof route.query.q === 'string' ? route.query.q.trim() : ''
   if (q && q !== appliedKeyword.value) {
     keyword.value = q
     appliedKeyword.value = q
-    page.value = 1
-    return true
+    changed = true
   }
-  return false
+  const product = typeof route.query.product === 'string' ? route.query.product.trim().toLowerCase() : ''
+  const org = typeof route.query.org === 'string' ? route.query.org.trim().toLowerCase() : ''
+  const target = typeof route.query.target === 'string' ? route.query.target.trim().toLowerCase() : ''
+  const indication = typeof route.query.indication === 'string' ? route.query.indication.trim().toLowerCase() : ''
+  if (product !== appliedProduct.value) {
+    productFilter.value = product
+    appliedProduct.value = product
+    changed = true
+  }
+  if (org !== appliedOrg.value) {
+    orgFilter.value = org
+    appliedOrg.value = org
+    changed = true
+  }
+  if (target !== appliedTarget.value) {
+    appliedTarget.value = target
+    changed = true
+  }
+  if (indication !== appliedIndication.value) {
+    appliedIndication.value = indication
+    changed = true
+  }
+  if (changed) page.value = 1
+  return changed
 }
 
 watch(
-  () => route.query.q,
+  () => [route.query.q, route.query.product, route.query.org, route.query.target, route.query.indication],
   () => {
     if (syncQueryKeyword()) load()
   },
@@ -352,6 +419,11 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 <style scoped>
 .ed-head { margin-bottom: clamp(16px, 2.5vw, 28px); }
+.watch-only { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.watch-flag { margin-left: 6px; font-size: 11px; color: #b45309; }
+.entry-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.mini-chip { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #eef2ff; }
+.mini-chip.muted { background: #f3f4f6; }
 .filters {
   display: flex;
   flex-wrap: wrap;

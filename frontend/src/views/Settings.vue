@@ -1,6 +1,7 @@
 <template>
   <div>
     <SystemConfigPanel v-if="activeTab === 'system'" />
+    <EntityLexiconPanel v-if="activeTab === 'entities'" />
 
     <!-- 爬虫注册表 + 调度 -->
     <section v-show="activeTab === 'crawlers'" class="card reveal">
@@ -282,12 +283,13 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import SystemConfigPanel from '../components/settings/SystemConfigPanel.vue'
+import EntityLexiconPanel from '../components/settings/EntityLexiconPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const LEGACY_SYSTEM_TABS = new Set(['models', 'rag', 'mail'])
-const tabIds = new Set(['system', 'crawlers', 'keywords', ...LEGACY_SYSTEM_TABS])
+const tabIds = new Set(['system', 'crawlers', 'keywords', 'entities', ...LEGACY_SYSTEM_TABS])
 
 function normalizeTab(raw) {
   if (!raw || typeof raw !== 'string') return 'system'

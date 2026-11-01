@@ -1,0 +1,36 @@
+# 高优实体种子（与 filter_keyword 分离，专供归一化）
+orgs:
+  - canonical: eli lilly
+    aliases: [lilly, 礼来, 礼来制药, eli lilly and company, 美国礼来]
+  - canonical: novo nordisk
+    aliases: [novo, 诺和诺德, novonordisk, novo nordisk a/s]
+  - canonical: pfizer
+    aliases: [辉瑞, pfizer inc]
+  - canonical: astrazeneca
+    aliases: [阿斯利康, az]
+  - canonical: roche
+    aliases: [罗氏, f. hoffmann-la roche]
+products:
+  - canonical: wegovy
+    aliases: [wegovy®, 司美格鲁肽减重针]
+  - canonical: ozempic
+    aliases: [ozempic®]
+  - canonical: mounjaro
+    aliases: [mounjaro®, 替尔泊肽品牌]
+  - canonical: cagrisema
+    aliases: [cagri-sema, cagrilintide-semaglutide]
+drugs:
+  - canonical: semaglutide
+    aliases: [司美格鲁肽, semaglutide injection]
+  - canonical: tirzepatide
+    aliases: [替尔泊肽]
+targets:
+  - canonical: glp-1
+    aliases: [glp1, glp-1r, 胰高血糖素样肽-1]
+  - canonical: gip
+    aliases: [胃抑肽]
+indications:
+  - canonical: obesity
+    aliases: [肥胖, 减重, weight loss]
+  - canonical: type 2 diabetes
+    aliases: [2型糖尿病, t2d, t2dm]

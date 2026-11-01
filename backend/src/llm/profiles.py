@@ -20,6 +20,7 @@ DEFAULT_CHAT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
 DEFAULT_EMBEDDING_DIM = 1024
 DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+DEFAULT_ENTITY_MODEL = "Qwen/Qwen3-8B"
 
 _KEY_ATTR = {
     "chat": "api_key",
@@ -27,6 +28,7 @@ _KEY_ATTR = {
     "rerank": "reranker_api_key",
     "reranker": "reranker_api_key",
     "vision": "vision_api_key",
+    "entity": "entity_api_key",
 }
 _URL_ATTR = {
     "chat": "base_url",
@@ -34,6 +36,7 @@ _URL_ATTR = {
     "rerank": "reranker_base_url",
     "reranker": "reranker_base_url",
     "vision": "vision_base_url",
+    "entity": "entity_base_url",
 }
 
 
@@ -106,6 +109,10 @@ def _public(row: LlmProfile) -> Dict[str, Any]:
         "vision_model": row.vision_model or "",
         "has_vision_key": bool(row.vision_api_key),
         "vision_key_hint": _mask_key(open_secret(row.vision_api_key)),
+        "entity_base_url": row.entity_base_url or "",
+        "entity_model": row.entity_model or DEFAULT_ENTITY_MODEL,
+        "has_entity_key": bool(row.entity_api_key),
+        "entity_key_hint": _mask_key(open_secret(row.entity_api_key)),
         "is_active": row.is_active,
     }
 
@@ -121,6 +128,8 @@ def _defaults() -> Dict[str, Any]:
         "reranker_model": DEFAULT_RERANKER_MODEL,
         "vision_base_url": DEFAULT_BASE_URL,
         "vision_model": "",
+        "entity_base_url": DEFAULT_BASE_URL,
+        "entity_model": DEFAULT_ENTITY_MODEL,
     }
 
 
@@ -152,9 +161,15 @@ def create_profile(
     vision_api_key: str = "",
     vision_base_url: str = "",
     vision_model: str = "",
+    entity_api_key: str = "",
+    entity_base_url: str = "",
+    entity_model: str = "",
 ) -> Dict[str, Any]:
     with session_scope() as session:
         v_url = _clean_url(vision_base_url) if (vision_base_url or "").strip() else ""
+        e_url = _clean_url(entity_base_url) if (entity_base_url or "").strip() else _clean_url(base_url)
+        e_model = (entity_model or "").strip() or DEFAULT_ENTITY_MODEL
+        e_key = (entity_api_key or "").strip() or (api_key or "").strip()
         row = LlmProfile(
             name=_require_text(name, "名称")[:100],
             api_key=seal(_require_text(api_key, "对话 API Key")),
@@ -170,6 +185,9 @@ def create_profile(
             vision_api_key=seal((vision_api_key or "").strip()) if (vision_api_key or "").strip() else "",
             vision_base_url=v_url[:300],
             vision_model=(vision_model or "").strip()[:200],
+            entity_api_key=seal(e_key) if e_key else "",
+            entity_base_url=e_url[:300],
+            entity_model=e_model[:200],
             is_active=False,
         )
         session.add(row)
@@ -203,6 +221,9 @@ def update_profile(
     vision_api_key: Optional[str] = None,
     vision_base_url: str = "",
     vision_model: str = "",
+    entity_api_key: Optional[str] = None,
+    entity_base_url: str = "",
+    entity_model: str = "",
     rebuild: bool = False,
 ) -> Dict[str, Any]:
     dim = _require_dim(embedding_dim)
@@ -228,6 +249,12 @@ def update_profile(
         # 视觉 Key 可留空（新闻链路不依赖）；有输入则更新，留空且已有则保留
         if (vision_api_key or "").strip():
             row.vision_api_key = seal(vision_api_key.strip())
+        row.entity_base_url = _clean_url(entity_base_url or row.base_url or "")[:300]
+        row.entity_model = ((entity_model or "").strip() or DEFAULT_ENTITY_MODEL)[:200]
+        if (entity_api_key or "").strip():
+            row.entity_api_key = seal(entity_api_key.strip())
+        elif not row.entity_api_key and row.api_key:
+            row.entity_api_key = row.api_key
         return _public(row)
 
 

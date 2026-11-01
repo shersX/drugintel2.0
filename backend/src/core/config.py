@@ -47,6 +47,9 @@ def _active_llm_profile() -> Optional[SimpleNamespace]:
                 vision_api_key=open_secret(row.vision_api_key),
                 vision_base_url=(row.vision_base_url or "").strip().rstrip("/"),
                 vision_model=(row.vision_model or "").strip(),
+                entity_api_key=open_secret(getattr(row, "entity_api_key", "") or ""),
+                entity_base_url=(getattr(row, "entity_base_url", "") or "").strip().rstrip("/"),
+                entity_model=(getattr(row, "entity_model", "") or "").strip(),
             )
     except Exception as exc:
         logger.warning("读取启用中的模型配置失败，改用环境变量: %s", exc)
@@ -186,6 +189,42 @@ class VisionEnvConfig:
             base_url=row.vision_base_url or row.base_url or env.base_url,
             model=row.vision_model or env.model,
             timeout_sec=env.timeout_sec,
+        )
+
+
+@dataclass(frozen=True)
+class EntityEnvConfig:
+    """实体抽取专用槽位；默认硅基流动 Qwen/Qwen3-8B。"""
+
+    api_key: str
+    base_url: str
+    model: str
+    timeout_sec: float
+    max_retries: int
+
+    @staticmethod
+    def _from_env() -> "EntityEnvConfig":
+        chat = LLMEnvConfig._from_env()
+        return EntityEnvConfig(
+            api_key=_env_text("SILICONFLOW_ENTITY_API_KEY", chat.api_key),
+            base_url=_env_text("SILICONFLOW_ENTITY_BASE_URL", chat.base_url).rstrip("/"),
+            model=_env_text("SILICONFLOW_ENTITY_MODEL", "Qwen/Qwen3-8B"),
+            timeout_sec=float(os.getenv("ENTITY_TIMEOUT_SEC", "90")),
+            max_retries=int(os.getenv("ENTITY_MAX_RETRIES", "3")),
+        )
+
+    @staticmethod
+    def load() -> "EntityEnvConfig":
+        env = EntityEnvConfig._from_env()
+        row = _active_llm_profile()
+        if row is None:
+            return env
+        return EntityEnvConfig(
+            api_key=row.entity_api_key or row.api_key or env.api_key,
+            base_url=row.entity_base_url or row.base_url or env.base_url,
+            model=row.entity_model or env.model,
+            timeout_sec=env.timeout_sec,
+            max_retries=env.max_retries,
         )
 
 

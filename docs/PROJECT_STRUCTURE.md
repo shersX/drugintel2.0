@@ -8,6 +8,10 @@
 | 文档版本 | V1.0 |
 | 创建日期 | 2026-03-26 |
 | 关联文档 | [PRD.md](./PRD.md) |
+| 实体/聚类变更（AI） | [ENTITY_CLUSTERING_CHANGELOG.md](./ENTITY_CLUSTERING_CHANGELOG.md) |
+| 聚类迁移与后续优化 | [CLUSTERING_MIGRATION.md](./CLUSTERING_MIGRATION.md) |
+
+> 2026-04 起生产聚类为 `backend/src/clustering/streaming.py`（StreamingClusterer）；另有 `backend/src/entities/`、`backend/src/scoring/`。改这些模块前请先读 CHANGELOG。
 
 ---
 

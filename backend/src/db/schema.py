@@ -44,6 +44,7 @@ def ensure_schema() -> None:
         )
     _backfill_news_process_status(engine)
     _ensure_llm_profile_columns(engine)
+    _ensure_entity_and_news_columns(engine)
     _ensure_pipeline_schema(engine)
     _ensure_company_name_zh_column(engine)
     _ensure_crawl_config_columns(engine)
@@ -65,6 +66,7 @@ def ensure_schema() -> None:
     _seed_smtp_config()
     _seed_filter_keywords()
     _seed_pipeline_demo_assets()
+    _seed_entity_lexicon()
     from backend.src.auth.service import bind_watchlist_owners, ensure_first_admin
 
     ensure_first_admin()
@@ -86,6 +88,9 @@ def _ensure_llm_profile_columns(engine) -> None:
             ("vision_base_url", "VARCHAR(300)"),
             ("vision_api_key", "TEXT"),
             ("vision_model", "VARCHAR(200)"),
+            ("entity_base_url", "VARCHAR(300)"),
+            ("entity_api_key", "TEXT"),
+            ("entity_model", "VARCHAR(200)"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ADD COLUMN IF NOT EXISTS {name} {ddl}"))
         conn.execute(
@@ -152,6 +157,33 @@ def _ensure_llm_profile_columns(engine) -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET entity_base_url = base_url
+                WHERE entity_base_url IS NULL OR btrim(entity_base_url) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET entity_api_key = api_key
+                WHERE entity_api_key IS NULL OR btrim(entity_api_key) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET entity_model = 'Qwen/Qwen3-8B'
+                WHERE entity_model IS NULL OR btrim(entity_model) = ''
+                """
+            )
+        )
         for name, default in (
             ("embedding_base_url", "''"),
             ("embedding_api_key", "''"),
@@ -160,11 +192,56 @@ def _ensure_llm_profile_columns(engine) -> None:
             ("vision_base_url", "''"),
             ("vision_api_key", "''"),
             ("vision_model", "''"),
+            ("entity_base_url", "''"),
+            ("entity_api_key", "''"),
+            ("entity_model", "'Qwen/Qwen3-8B'"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET DEFAULT {default}"))
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET NOT NULL"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET DEFAULT 1024"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET NOT NULL"))
+
+
+def _ensure_entity_and_news_columns(engine) -> None:
+    """新闻/事件实体字段 + 风险分列（表由 create_all 创建 entity_lexicon）。"""
+    with engine.begin() as conn:
+        for name, ddl in (
+            ("products", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("drugs", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("orgs", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("targets", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("indications", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("entity_raw", "JSONB"),
+            ("story_type", "VARCHAR(32)"),
+        ):
+            if conn.execute(text("SELECT to_regclass('public.news')")).scalar():
+                conn.execute(text(f"ALTER TABLE news ADD COLUMN IF NOT EXISTS {name} {ddl}"))
+        if conn.execute(text("SELECT to_regclass('public.news')")).scalar():
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_news_story_type ON news (story_type)"))
+        for name, ddl in (
+            ("products", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("orgs", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("story_types", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("status", "VARCHAR(16) NOT NULL DEFAULT 'active'"),
+            ("ci_risk_score", "DOUBLE PRECISION"),
+            ("burst_prob", "DOUBLE PRECISION"),
+            ("score_components", "JSONB"),
+        ):
+            if conn.execute(text("SELECT to_regclass('public.event')")).scalar():
+                conn.execute(text(f"ALTER TABLE event ADD COLUMN IF NOT EXISTS {name} {ddl}"))
+
+
+def _seed_entity_lexicon() -> None:
+    try:
+        from backend.src.entities.lexicon import seed_all
+
+        with session_scope() as session:
+            if session.execute(text("SELECT to_regclass('public.entity_lexicon')")).scalar() is None:
+                return
+            stats = seed_all(session)
+            logger.info("实体词典种子: %s", stats)
+    except Exception as exc:
+        logger.warning("实体词典种子失败: %s", exc)
 
 
 def _ensure_crawl_config_columns(engine) -> None:
@@ -225,6 +302,7 @@ def _encrypt_llm_profile_keys() -> None:
                 "embedding_api_key",
                 "reranker_api_key",
                 "vision_api_key",
+                "entity_api_key",
             ):
                 value = getattr(row, attr) or ""
                 if value and not is_sealed(value):

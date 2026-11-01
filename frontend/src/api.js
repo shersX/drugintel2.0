@@ -60,16 +60,50 @@ export const api = {
   trend: () => request('/api/stats/trend'),
   keywords: () => request('/api/stats/keywords'),
   crawlers: () => request('/api/crawlers'),
-  news: (page = 1, { q = '', crawlers = [], dateFrom = '', dateTo = '' } = {}) => {
+  news: (page = 1, {
+    q = '',
+    crawlers = [],
+    dateFrom = '',
+    dateTo = '',
+    storyType = '',
+    product = '',
+    org = '',
+    target = '',
+    indication = '',
+    watchedOnly = false,
+  } = {}) => {
     const params = new URLSearchParams({ page: String(page), page_size: '20' })
     if (q) params.set('q', q)
     for (const key of crawlers) params.append('crawlers', key)
     if (dateFrom) params.set('date_from', dateFrom)
     if (dateTo) params.set('date_to', dateTo)
+    if (storyType) params.set('story_type', storyType)
+    if (product) params.set('product', product)
+    if (org) params.set('org', org)
+    if (target) params.set('target', target)
+    if (indication) params.set('indication', indication)
+    if (watchedOnly) params.set('watched_only', 'true')
     return request(`/api/news?${params}`)
   },
   newsDetail: (id) => request(`/api/news/${id}`),
-  events: () => request('/api/events'),
+  events: (page = 1) => request(`/api/events?page=${page}&page_size=20`),
+  eventDetail: (id) => request(`/api/events/${id}`),
+  clusterRun: () => request('/api/cluster/run', { method: 'POST' }),
+  clusterScore: () => request('/api/cluster/score', { method: 'POST' }),
+  entities: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+    })
+    return request(`/api/entities?${q}`)
+  },
+  createEntity: (body) => request('/api/entities', { method: 'POST', body: JSON.stringify(body) }),
+  updateEntity: (id, body) => request(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  mergeEntities: (body) => request('/api/entities/merge', { method: 'POST', body: JSON.stringify(body) }),
+  importEntities: () => request('/api/entities/import-keywords', { method: 'POST' }),
+  entityWatchlist: () => request('/api/entity-watchlist'),
+  addEntityWatch: (entity_id) => request('/api/entity-watchlist', { method: 'POST', body: JSON.stringify({ entity_id }) }),
+  removeEntityWatch: (entity_id) => request(`/api/entity-watchlist/${entity_id}`, { method: 'DELETE' }),
   ask: (body) => request('/api/chat/ask', { method: 'POST', body: JSON.stringify(body) }),
   conversations: (limit = 50) => request(`/api/chat/conversations?limit=${limit}`),
   createConversation: () => request('/api/chat/conversations', { method: 'POST' }),
