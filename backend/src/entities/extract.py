@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, MutableMapping, Optional, Sequence
+from typing import Any, Dict, List, MutableMapping, Sequence
 
 from backend.src.core.config import EntityEnvConfig
 from backend.src.core.logger import get_logger
@@ -13,6 +13,9 @@ from backend.src.entities.lexicon import normalize_and_feedback
 from backend.src.llm.client import SiliconFlowClient
 
 logger = get_logger("entities.extract")
+
+# 连续传输失败达到该阈值后，跳过本批剩余条目（空实体），避免卡死整轮
+_CIRCUIT_BREAK_AFTER = 2
 
 STORY_TYPES = (
     "clinical",
@@ -84,29 +87,67 @@ def _normalize_story_type(value: Any) -> str:
     return t if t in STORY_TYPES else "other"
 
 
+def _empty_raw() -> Dict[str, Any]:
+    return {
+        "products": [],
+        "drugs": [],
+        "orgs": [],
+        "targets": [],
+        "indications": [],
+        "story_type": "other",
+    }
+
+
+def apply_empty_entities(item: MutableMapping) -> None:
+    item.setdefault("products", [])
+    item.setdefault("drugs", [])
+    item.setdefault("orgs", [])
+    item.setdefault("targets", [])
+    item.setdefault("indications", [])
+    item.setdefault("story_type", "other")
+    item.setdefault("entity_raw", {})
+
+
+def _crawl_cancel_requested() -> bool:
+    try:
+        from backend.src.crawl.schedule import is_crawl_cancel_requested
+
+        return is_crawl_cancel_requested()
+    except Exception:
+        return False
+
+
 async def extract_one(title: str, abstract: str = "", content: str = "") -> Dict[str, Any]:
     body = f"标题: {title or ''}\n摘要: {abstract or ''}\n"
     snippet = (content or "")[:1200]
     if snippet:
         body += f"正文节选: {snippet}\n"
-    client = _client()
-    try:
-        resp = await client.chat_completion(
-            [
-                {"role": "system", "content": _SYSTEM},
-                {"role": "user", "content": body},
-            ],
-            temperature=0.1,
-        )
-        content_text = ""
-        if isinstance(resp, dict):
-            choices = resp.get("choices") or []
-            if choices:
-                content_text = ((choices[0] or {}).get("message") or {}).get("content") or ""
-        data = _parse_json(content_text)
-    except Exception as exc:
-        logger.warning("实体抽取失败: %s", exc)
-        data = {}
+    cfg = EntityEnvConfig.load()
+    client = SiliconFlowClient(
+        api_key=cfg.api_key,
+        base_url=cfg.base_url,
+        model=cfg.model,
+        timeout_sec=cfg.timeout_sec,
+        max_retries=cfg.max_retries,
+    )
+    # Qwen3 默认开启 thinking，单条常 >30s；实体抽取关掉思考模式
+    thinking = False if "qwen3" in (cfg.model or "").lower() else None
+    resp = await client.chat_completion(
+        [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": body},
+        ],
+        temperature=0.1,
+        enable_thinking=thinking,
+    )
+    content_text = ""
+    if isinstance(resp, dict):
+        choices = resp.get("choices") or []
+        if choices:
+            content_text = ((choices[0] or {}).get("message") or {}).get("content") or ""
+    elif isinstance(resp, str):
+        content_text = resp
+    data = _parse_json(content_text)
     return {
         "products": _as_list(data.get("products")),
         "drugs": _as_list(data.get("drugs")),
@@ -120,27 +161,55 @@ async def extract_one(title: str, abstract: str = "", content: str = "") -> Dict
 async def extract_and_normalize_items(
     items: Sequence[MutableMapping],
 ) -> List[MutableMapping]:
-    """就地写入实体字段；词典回流在同一会话完成。"""
+    """就地写入实体字段；词典回流在同一会话完成。
+
+    传输类连续失败会断路跳过剩余条目；前端 abandon 会置取消位，本函数每条前检查。
+    """
     if not items:
         return []
     cfg = EntityEnvConfig.load()
     if not cfg.api_key:
         logger.warning("实体抽取 API Key 未配置，跳过 NER")
         for item in items:
-            item.setdefault("products", [])
-            item.setdefault("drugs", [])
-            item.setdefault("orgs", [])
-            item.setdefault("targets", [])
-            item.setdefault("indications", [])
-            item.setdefault("story_type", "other")
-            item.setdefault("entity_raw", {})
+            apply_empty_entities(item)
         return list(items)
 
-    for item in items:
+    consecutive_transport_failures = 0
+    skip_rest = False
+
+    for index, item in enumerate(items):
+        if _crawl_cancel_requested():
+            logger.warning(
+                "实体抽取收到取消信号，跳过剩余 %s 条",
+                len(items) - index,
+            )
+            for rest in items[index:]:
+                apply_empty_entities(rest)
+            break
+
+        if skip_rest:
+            apply_empty_entities(item)
+            continue
+
         title = str(item.get("title") or "")
         abstract = str(item.get("abstract") or item.get("description") or "")
         content = str(item.get("full_text") or item.get("content") or "")
-        raw = await extract_one(title, abstract, content)
+        try:
+            raw = await extract_one(title, abstract, content)
+            consecutive_transport_failures = 0
+        except Exception as exc:
+            logger.warning("实体抽取失败: %s", exc)
+            raw = _empty_raw()
+            consecutive_transport_failures += 1
+            if consecutive_transport_failures >= _CIRCUIT_BREAK_AFTER:
+                remaining = len(items) - index - 1
+                logger.error(
+                    "实体抽取连续失败 %s 次，跳过剩余 %s 条并继续流水线",
+                    consecutive_transport_failures,
+                    remaining,
+                )
+                skip_rest = True
+
         with session_scope() as session:
             norm = normalize_and_feedback(
                 session,
@@ -155,6 +224,9 @@ async def extract_and_normalize_items(
         item["orgs"] = norm["orgs"]
         item["targets"] = norm["targets"]
         item["indications"] = norm["indications"]
-        item["entity_raw"] = {**(norm.get("entity_raw") or {}), "story_type": raw.get("story_type")}
+        item["entity_raw"] = {
+            **(norm.get("entity_raw") or {}),
+            "story_type": raw.get("story_type"),
+        }
         item["story_type"] = raw.get("story_type") or "other"
     return list(items)

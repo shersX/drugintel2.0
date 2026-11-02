@@ -54,7 +54,12 @@ def _emit(progress: ProgressCb, **fields: Any) -> None:
         return
     try:
         progress(fields)
-    except Exception:
+    except Exception as exc:
+        # 本轮作废必须向上抛，不能被进度回调吞掉
+        from backend.src.crawl.schedule import CrawlAborted
+
+        if isinstance(exc, CrawlAborted):
+            raise
         logger.exception("进度回调失败")
 
 
@@ -137,13 +142,10 @@ async def _enrich_items(
     except Exception as exc:
         logger.exception("实体抽取失败，继续向量化: %s", exc)
         stats["entity_error"] = str(exc)
+        from backend.src.entities.extract import apply_empty_entities
+
         for item in summarized:
-            item.setdefault("products", [])
-            item.setdefault("drugs", [])
-            item.setdefault("orgs", [])
-            item.setdefault("targets", [])
-            item.setdefault("indications", [])
-            item.setdefault("story_type", "other")
+            apply_empty_entities(item)
     _emit(progress, stage="entity", label="实体完成", items_out=len(summarized))
 
     _emit(progress, stage="embedding", label="生成向量", items_in=len(summarized))

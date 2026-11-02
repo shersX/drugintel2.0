@@ -5,73 +5,111 @@
     </header>
 
     <div class="filters">
-      <input
-        v-model="keyword"
-        type="search"
-        placeholder="搜索标题或摘要"
-        aria-label="搜索新闻"
-        @keydown.enter="applySearch"
-      />
-      <button class="secondary" :disabled="loading" @click="applySearch">搜索</button>
-      <select v-model="storyType" @change="applySearch" aria-label="事件类型">
-        <option value="">全部类型</option>
-        <option v-for="t in storyTypes" :key="t" :value="t">{{ t }}</option>
-      </select>
-      <input v-model="productFilter" type="search" placeholder="产品" aria-label="产品" @keydown.enter="applySearch" />
-      <input v-model="orgFilter" type="search" placeholder="企业" aria-label="企业" @keydown.enter="applySearch" />
-      <label class="watch-only"><input type="checkbox" v-model="watchedOnly" @change="applySearch" /> 仅关注</label>
-      <div class="picker" ref="sourcePicker">
-        <button
-          type="button"
-          class="picker-btn"
-          :aria-expanded="sourceOpen"
-          @click.stop="toggleSource"
-        >{{ sourceLabel }}</button>
-        <div v-if="sourceOpen" class="picker-menu" role="group" aria-label="来源" @click.stop>
-          <p v-if="!sources.length" class="picker-empty">暂无来源选项</p>
-          <label v-for="src in sources" :key="src.key" class="picker-option">
-            <input v-model="selectedSources" type="checkbox" :value="src.key" />
-            {{ src.label }}
-          </label>
+      <div class="filter-row">
+        <div class="search-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            v-model="keyword"
+            type="search"
+            placeholder="搜索标题或摘要（Enter）"
+            aria-label="搜索新闻"
+            @keydown.enter="applySearch"
+          />
         </div>
-      </div>
-      <div class="picker" ref="datePicker">
-        <button
-          type="button"
-          class="picker-btn"
-          :aria-expanded="dateOpen"
-          @click.stop="toggleDate"
-        >{{ dateLabel }}</button>
-        <div v-if="dateOpen" class="picker-menu cal" :class="{ up: dateOpensUp }" role="dialog" aria-label="更新时间">
-          <div class="cal-head">
-            <button type="button" class="cal-nav" aria-label="上个月" @click="shiftMonth(-1)">‹</button>
-            <span class="cal-title">{{ viewYear }} 年 {{ viewMonth }} 月</span>
-            <button type="button" class="cal-nav" aria-label="下个月" @click="shiftMonth(1)">›</button>
+        <div class="picker" ref="sourcePicker">
+          <button
+            type="button"
+            class="picker-btn"
+            :aria-expanded="sourceOpen"
+            @click.stop="toggleSource"
+          >{{ sourceLabel }}</button>
+          <div v-if="sourceOpen" class="picker-menu" role="group" aria-label="来源" @click.stop>
+            <p v-if="!sources.length" class="picker-empty">暂无来源选项</p>
+            <label v-for="src in sources" :key="src.key" class="picker-option">
+              <input v-model="selectedSources" type="checkbox" :value="src.key" />
+              {{ src.label }}
+            </label>
           </div>
-          <div class="cal-week">
-            <span v-for="day in weekdays" :key="day">{{ day }}</span>
-          </div>
-          <div class="cal-grid">
-            <button
-              v-for="(cell, index) in calendarCells"
-              :key="index"
-              type="button"
-              class="cal-day"
-              :class="dayClass(cell)"
-              :disabled="!cell"
-              @click="cell && pickDay(cell)"
-            >{{ cell ? cell.getDate() : '' }}</button>
-          </div>
-          <button type="button" class="cal-clear" @click="clearDates">清除</button>
         </div>
+        <div class="picker" ref="datePicker">
+          <button
+            type="button"
+            class="picker-btn"
+            :aria-expanded="dateOpen"
+            @click.stop="toggleDate"
+          >{{ dateLabel }}</button>
+          <div v-if="dateOpen" class="picker-menu cal" :class="{ up: dateOpensUp }" role="dialog" aria-label="更新时间">
+            <div class="cal-head">
+              <button type="button" class="cal-nav" aria-label="上个月" @click="shiftMonth(-1)">‹</button>
+              <span class="cal-title">{{ viewYear }} 年 {{ viewMonth }} 月</span>
+              <button type="button" class="cal-nav" aria-label="下个月" @click="shiftMonth(1)">›</button>
+            </div>
+            <div class="cal-week">
+              <span v-for="day in weekdays" :key="day">{{ day }}</span>
+            </div>
+            <div class="cal-grid">
+              <button
+                v-for="(cell, index) in calendarCells"
+                :key="index"
+                type="button"
+                class="cal-day"
+                :class="dayClass(cell)"
+                :disabled="!cell"
+                @click="cell && pickDay(cell)"
+              >{{ cell ? cell.getDate() : '' }}</button>
+            </div>
+            <button type="button" class="cal-clear" @click="clearDates">清除</button>
+          </div>
+        </div>
+        <button type="button" class="secondary refresh-btn" :disabled="loading" @click="reload">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" :class="{ spinning: loading }">
+            <path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" />
+          </svg>
+          刷新
+        </button>
       </div>
-      <button class="secondary refresh-btn" :disabled="loading" @click="reload">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" :class="{ spinning: loading }">
-          <path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" />
-        </svg>
-        刷新
-      </button>
+
+      <div class="filter-row">
+        <UiSelect
+          v-model="storyType"
+          class="type-select"
+          size="md"
+          placeholder="全部类型"
+          :options="storyTypeOptions"
+          @change="applySearch"
+        />
+        <label class="watch-only">
+          <input type="checkbox" v-model="watchedOnly" @change="applySearch" />
+          仅关注
+        </label>
+        <input
+          v-model="productFilter"
+          class="meta-field"
+          type="search"
+          placeholder="产品"
+          aria-label="产品"
+          @keydown.enter="applySearch"
+        />
+        <input
+          v-model="orgFilter"
+          class="meta-field"
+          type="search"
+          placeholder="企业"
+          aria-label="企业"
+          @keydown.enter="applySearch"
+        />
+      </div>
+
+      <div v-if="activeChips.length" class="filter-chips">
+        <span class="chips-label">已选</span>
+        <span v-for="chip in activeChips" :key="chip.key" class="filter-chip">
+          {{ chip.label }}
+          <button type="button" :aria-label="`清除${chip.label}`" @click="clearChip(chip.key)">×</button>
+        </span>
+      </div>
     </div>
 
     <div v-if="error" class="card empty">
@@ -120,7 +158,7 @@
             <span class="time">{{ formatDateTimeMinute(n.publish_time) }}</span>
             <template v-if="n.story_type">
               <i class="dot"></i>
-              <span>{{ n.story_type }}</span>
+              <span>{{ storyTypeLabel(n.story_type) }}</span>
             </template>
             <span v-if="n.watched" class="watch-flag">关注</span>
           </span>
@@ -164,10 +202,13 @@ import {
   plainAbstract,
   setCrawlerSources,
 } from '../format'
+import { STORY_TYPE_OPTIONS, storyTypeLabel } from '../storyTypes'
+import UiSelect from '../components/UiSelect.vue'
 
 const route = useRoute()
 
 const sources = computed(() => newsCrawlerSources())
+const storyTypeOptions = STORY_TYPE_OPTIONS
 const items = ref([])
 const page = ref(1)
 const total = ref(0)
@@ -179,7 +220,6 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const appliedDateFrom = ref('')
 const appliedDateTo = ref('')
-const storyTypes = ['clinical', 'regulatory', 'deal', 'financing', 'pipeline', 'conference', 'safety', 'other']
 const storyType = ref('')
 const productFilter = ref('')
 const orgFilter = ref('')
@@ -210,16 +250,41 @@ const filtered = computed(() => Boolean(
   || appliedWatched.value,
 ))
 const sourceLabel = computed(() => {
-  if (!selectedSources.value.length) return '来源'
+  if (!selectedSources.value.length) return '来源 · 全部'
   return sources.value
     .filter((src) => selectedSources.value.includes(src.key))
     .map((src) => src.label)
     .join('、')
 })
+const activeChips = computed(() => {
+  const chips = []
+  if (appliedKeyword.value) chips.push({ key: 'keyword', label: `搜索: ${appliedKeyword.value}` })
+  if (appliedStoryType.value) {
+    chips.push({ key: 'type', label: `类型: ${storyTypeLabel(appliedStoryType.value)}` })
+  }
+  if (appliedWatched.value) chips.push({ key: 'watch', label: '仅关注' })
+  if (appliedProduct.value) chips.push({ key: 'product', label: `产品: ${appliedProduct.value}` })
+  if (appliedOrg.value) chips.push({ key: 'org', label: `企业: ${appliedOrg.value}` })
+  if (appliedSources.value.length) {
+    const names = sources.value
+      .filter((src) => appliedSources.value.includes(src.key))
+      .map((src) => src.label)
+    chips.push({ key: 'sources', label: `来源: ${names.join('、') || appliedSources.value.join('、')}` })
+  }
+  if (appliedDateFrom.value || appliedDateTo.value) {
+    let text = '更新时间'
+    if (appliedDateFrom.value && appliedDateTo.value) text = `${appliedDateFrom.value} 至 ${appliedDateTo.value}`
+    else if (appliedDateFrom.value) text = `${appliedDateFrom.value} 起`
+    chips.push({ key: 'dates', label: text })
+  }
+  return chips
+})
 
 function toggleSource() {
   dateOpen.value = false
-  sourceOpen.value = !sourceOpen.value
+  const next = !sourceOpen.value
+  if (sourceOpen.value && !next) applySearch()
+  sourceOpen.value = next
 }
 
 function pruneNewsSources() {
@@ -338,6 +403,8 @@ function pickDay(date) {
   } else {
     dateTo.value = value
   }
+  dateOpen.value = false
+  applySearch()
 }
 
 function dayClass(cell) {
@@ -352,10 +419,31 @@ function dayClass(cell) {
 function clearDates() {
   dateFrom.value = ''
   dateTo.value = ''
+  dateOpen.value = false
+  applySearch()
+}
+
+function clearChip(key) {
+  if (key === 'keyword') keyword.value = ''
+  if (key === 'type') storyType.value = ''
+  if (key === 'watch') watchedOnly.value = false
+  if (key === 'product') productFilter.value = ''
+  if (key === 'org') orgFilter.value = ''
+  if (key === 'sources') selectedSources.value = []
+  if (key === 'dates') {
+    dateFrom.value = ''
+    dateTo.value = ''
+  }
+  applySearch()
 }
 
 function onDocumentClick(event) {
-  if (sourcePicker.value && !sourcePicker.value.contains(event.target)) sourceOpen.value = false
+  if (sourcePicker.value && !sourcePicker.value.contains(event.target)) {
+    if (sourceOpen.value) {
+      sourceOpen.value = false
+      applySearch()
+    }
+  }
   if (datePicker.value && !datePicker.value.contains(event.target)) dateOpen.value = false
 }
 
@@ -419,29 +507,79 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 <style scoped>
 .ed-head { margin-bottom: clamp(16px, 2.5vw, 28px); }
-.watch-only { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.watch-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  min-height: 44px;
+  padding: 0 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .watch-flag { margin-left: 6px; font-size: 11px; color: #b45309; }
 .entry-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .mini-chip { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #eef2ff; }
 .mini-chip.muted { background: #f3f4f6; }
 .filters {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+}
+.filter-row {
+  display: flex;
   flex-wrap: wrap;
   align-items: stretch;
   gap: 10px;
-  margin-bottom: 18px;
 }
-.filters input[type="search"] {
-  flex: 1 1 220px;
+.search-wrap {
+  position: relative;
+  flex: 1 1 240px;
   min-width: 180px;
+}
+.search-wrap svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-mute);
+  pointer-events: none;
+}
+.search-wrap input[type="search"] {
+  width: 100%;
   box-sizing: border-box;
   min-height: 44px;
+  padding: 11px 14px 11px 40px;
+  background: var(--paper);
 }
-.filters > .secondary,
+.meta-field {
+  flex: 1 1 120px;
+  min-width: 110px;
+  box-sizing: border-box;
+  min-height: 44px;
+  background: var(--paper);
+}
+.type-select {
+  flex: 0 0 auto;
+  align-self: stretch;
+  --ui-select-w: 148px;
+}
+.type-select :deep(.ui-select-trigger) {
+  min-height: 44px;
+  height: 100%;
+  background: var(--paper);
+}
+.filters .secondary,
 .filters .picker-btn {
   box-sizing: border-box;
   min-height: 44px;
-  padding: 11px 22px;
+  padding: 11px 16px;
   font-size: var(--fs-sm);
   font-weight: 650;
   letter-spacing: 0.06em;
@@ -452,7 +590,7 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 }
 .picker { position: relative; display: flex; align-items: stretch; }
 .picker-btn {
-  background: transparent;
+  background: var(--paper);
   color: var(--ink-soft);
   border: 1px solid var(--rule-strong);
   border-radius: var(--r-md);
@@ -469,6 +607,48 @@ onUnmounted(() => document.removeEventListener('click', onDocumentClick))
   transform: none;
 }
 .refresh-btn { flex: none; }
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px dashed var(--rule);
+}
+.chips-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  font-weight: 700;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--moss) 45%, var(--rule-strong));
+  background: color-mix(in srgb, var(--moss) 12%, var(--surface));
+  color: var(--pine);
+  font-size: 12px;
+  font-weight: 650;
+}
+.filter-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.filter-chip button:hover {
+  color: var(--pine);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
 .picker-menu {
   position: absolute;
   z-index: 30;

@@ -209,8 +209,9 @@ class EntityEnvConfig:
             api_key=_env_text("SILICONFLOW_ENTITY_API_KEY", chat.api_key),
             base_url=_env_text("SILICONFLOW_ENTITY_BASE_URL", chat.base_url).rstrip("/"),
             model=_env_text("SILICONFLOW_ENTITY_MODEL", "Qwen/Qwen3-8B"),
+            # Qwen3 实体抽取常需 20–40s；过短会空超时。DNS 故障靠断路+不重试兜底
             timeout_sec=float(os.getenv("ENTITY_TIMEOUT_SEC", "90")),
-            max_retries=int(os.getenv("ENTITY_MAX_RETRIES", "3")),
+            max_retries=int(os.getenv("ENTITY_MAX_RETRIES", "2")),
         )
 
     @staticmethod

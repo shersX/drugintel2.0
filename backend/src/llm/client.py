@@ -13,6 +13,25 @@ logger = get_logger("llm.client")
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _DEFAULT_MAX_CONCURRENCY = 5
+_NON_RETRYABLE_MARKERS = (
+    "name resolution",
+    "temporary failure in name resolution",
+    "nodename nor servname",
+    "getaddrinfo failed",
+    "name or service not known",
+    "no address associated with hostname",
+    "network is unreachable",
+    "no route to host",
+)
+
+
+def is_non_retryable_transport_error(exc: BaseException) -> bool:
+    """DNS / 主机不可达等：再重试也只会拖死流水线。"""
+    name = type(exc).__name__
+    if "DNS" in name or name in {"ClientConnectorDNSError"}:
+        return True
+    msg = str(exc or "").lower()
+    return any(marker in msg for marker in _NON_RETRYABLE_MARKERS)
 
 
 class SiliconFlowClient:
@@ -47,12 +66,16 @@ class SiliconFlowClient:
         messages: List[Dict[str, Any]],
         *,
         temperature: Optional[float] = None,
+        enable_thinking: Optional[bool] = None,
     ):
         """messages 的 content 可为字符串，或 OpenAI 多模态 content 数组。"""
         assert self._semaphore is not None
         async with self._semaphore:
             return await self._chat_completion_unlocked(
-                messages, stream=False, temperature=temperature
+                messages,
+                stream=False,
+                temperature=temperature,
+                enable_thinking=enable_thinking,
             )
 
     async def chat_completion_stream(
@@ -75,6 +98,7 @@ class SiliconFlowClient:
         *,
         stream: bool = False,
         temperature: Optional[float] = None,
+        enable_thinking: Optional[bool] = None,
     ):
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
@@ -84,6 +108,9 @@ class SiliconFlowClient:
         }
         if temperature is not None:
             payload["temperature"] = float(temperature)
+        # Qwen3 默认 thinking=true，实体抽取会慢到超时；仅显式传入时带上该字段
+        if enable_thinking is not None:
+            payload["enable_thinking"] = bool(enable_thinking)
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -113,10 +140,17 @@ class SiliconFlowClient:
             except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
                 last_exc = e
                 logger.warning(
-                    "LLM 调用失败 attempt=%s/%s: %s", attempt, self._max_retries, e
+                    "LLM 调用失败 attempt=%s/%s: %s: %s",
+                    attempt,
+                    self._max_retries,
+                    type(e).__name__,
+                    e or repr(e),
                 )
+                if is_non_retryable_transport_error(e):
+                    raise
                 if attempt < self._max_retries:
-                    await asyncio.sleep(4 ** attempt)
+                    # 原先 4^attempt 在第 2 次已达 16s，连接抖动时拖太久
+                    await asyncio.sleep(min(8, 2 ** attempt))
                 else:
                     raise
 

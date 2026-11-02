@@ -123,7 +123,10 @@ async def lifespan(_app: FastAPI):
     ensure_schema()
     logger.info("数据库结构已检查")
     try:
-        result = abandon_orphan_runs("API 启动：作废未完成的采集轮次")
+        result = abandon_orphan_runs(
+            "API 启动：作废未完成的采集轮次",
+            cooperative_cancel=False,
+        )
         if result.get("abandoned"):
             logger.warning("启动时作废卡住采集轮次 %s", result)
     except Exception:

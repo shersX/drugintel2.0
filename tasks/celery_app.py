@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import worker_process_init
+from celery.signals import worker_init
 
 from backend.src.core.config import RedisEnvConfig
 
@@ -13,14 +13,22 @@ celery_app = Celery("drugintel", broker=redis_url, backend=redis_url)
 celery_app.conf.timezone = "Asia/Shanghai"
 
 
-@worker_process_init.connect
+@worker_init.connect
 def _ensure_schema_on_worker(**_kwargs):
+    """在主进程、fork 之前跑一次。
+
+    勿放在 worker_process_init：ensure_schema（含实体词典种子）过慢，
+    Celery 会等不到子进程 UP 后 SIGKILL，表现为采集永远起不来。
+    """
     from backend.src.crawl.schedule import abandon_orphan_runs
     from backend.src.db.schema import ensure_schema
 
     ensure_schema()
     try:
-        abandon_orphan_runs("Worker 启动：作废未完成的采集轮次")
+        abandon_orphan_runs(
+            "Worker 启动：作废未完成的采集轮次",
+            cooperative_cancel=False,
+        )
     except Exception:
         # worker 仍可启动；卡死状态可稍后由 API 或手动 abandon 清理
         pass

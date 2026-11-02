@@ -22,9 +22,16 @@ logger = get_logger("crawl.schedule")
 
 SH = ZoneInfo("Asia/Shanghai")
 LOCK_KEY = "drugintel:crawl:lock"
+CANCEL_KEY = "drugintel:crawl:cancel"
 LOCK_TTL_SEC = 2 * 60 * 60
 # 单源爬取+重试上限；超时后记失败并放行其它源
 CRAWLER_TIMEOUT_SEC = 10 * 60
+_CRAWL_TASK_NAMES = frozenset(
+    {
+        "tasks.crawl_tasks.run_crawl_pipeline",
+        "tasks.crawl_tasks.crawl_tick",
+    }
+)
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 _RELEASE_LUA = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -33,6 +40,10 @@ else
   return 0
 end
 """
+
+
+class CrawlAborted(RuntimeError):
+    """本轮已被前端/管理员作废，协作式退出流水线。"""
 
 
 class CrawlConfigError(ValueError):
@@ -227,6 +238,70 @@ def renew_lock(token: str) -> bool:
     return True
 
 
+def request_crawl_cancel(reason: str = "cancelled") -> None:
+    """标记本轮应协作退出（实体抽取等长循环会检查）。"""
+    try:
+        _redis().set(CANCEL_KEY, (reason or "cancelled")[:500], ex=LOCK_TTL_SEC)
+    except Exception:
+        logger.warning("写入采集取消标记失败", exc_info=True)
+
+
+def clear_crawl_cancel() -> None:
+    try:
+        _redis().delete(CANCEL_KEY)
+    except Exception:
+        logger.warning("清除采集取消标记失败", exc_info=True)
+
+
+def is_crawl_cancel_requested() -> bool:
+    try:
+        return bool(_redis().get(CANCEL_KEY))
+    except Exception:
+        return False
+
+
+def revoke_active_crawl_tasks() -> Dict[str, Any]:
+    """终止仍在跑/已排队的采集 Celery 任务（清空本轮真正生效）。"""
+    revoked: List[str] = []
+    try:
+        from tasks.celery_app import celery_app
+
+        insp = celery_app.control.inspect(timeout=2.0)
+        if insp is None:
+            return {"revoked": revoked}
+        buckets = []
+        for getter in (insp.active, insp.reserved, insp.scheduled):
+            try:
+                data = getter() or {}
+            except Exception:
+                data = {}
+            buckets.append(data)
+        seen: set[str] = set()
+        for data in buckets:
+            for _worker, tasks in (data or {}).items():
+                for task in tasks or []:
+                    name = str(task.get("name") or "")
+                    # scheduled 结构可能是 {request: {...}, eta: ...}
+                    request = task.get("request") if isinstance(task.get("request"), dict) else None
+                    if request:
+                        name = str(request.get("name") or name)
+                        task_id = str(request.get("id") or "")
+                    else:
+                        task_id = str(task.get("id") or "")
+                    if name not in _CRAWL_TASK_NAMES or not task_id or task_id in seen:
+                        continue
+                    seen.add(task_id)
+                    celery_app.control.revoke(
+                        task_id, terminate=True, signal="SIGTERM"
+                    )
+                    revoked.append(task_id)
+    except Exception:
+        logger.warning("撤销采集 Celery 任务失败", exc_info=True)
+    if revoked:
+        logger.warning("已 revoke 采集任务 ids=%s", revoked)
+    return {"revoked": revoked}
+
+
 def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Optional[str] = None) -> None:
     """短事务写入 CrawlRun.progress，并可续期采集锁。
 
@@ -243,6 +318,8 @@ def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Opti
     with session_scope() as session:
         run = session.get(CrawlRun, run_id)
         if run is None:
+            return
+        if run.status == "aborted":
             return
         current = dict(run.progress or {})
         payload = {k: v for k, v in fields.items() if v is not None}
@@ -274,9 +351,15 @@ def update_run_progress(run_id: int, fields: Dict[str, Any], *, lock_token: Opti
         run.progress = current
 
 
-def abandon_orphan_runs(reason: str = "进程中断，本轮已作废") -> Dict[str, Any]:
+def abandon_orphan_runs(
+    reason: str = "进程中断，本轮已作废",
+    *,
+    cooperative_cancel: bool = True,
+) -> Dict[str, Any]:
     """将卡住的 status=running 轮次标为 aborted，并清 Redis 采集锁。
 
+    可选置取消位并 revoke 仍在跑的采集 Celery 任务，避免「前端清空了、worker 还在抽实体」。
+    API/Worker 启动清理应传 cooperative_cancel=False，否则会留下取消位，把下一轮实体抽取全跳过。
     不改 CrawlConfig.running（定时意图保留）。
     """
     msg = (reason or "进程中断，本轮已作废").strip()[:4000]
@@ -305,9 +388,25 @@ def abandon_orphan_runs(reason: str = "进程中断，本轮已作废") -> Dict[
         _redis().delete(LOCK_KEY)
     except Exception:
         logger.warning("清除采集锁失败", exc_info=True)
-    if abandoned_ids:
-        logger.warning("已作废卡住的采集轮次 ids=%s reason=%s", abandoned_ids, msg)
-    return {"abandoned": len(abandoned_ids), "ids": abandoned_ids}
+    revoked = revoke_active_crawl_tasks()
+    revoked_ids = revoked.get("revoked") or []
+    if abandoned_ids or revoked_ids:
+        logger.warning(
+            "已作废卡住的采集轮次 ids=%s revoked=%s reason=%s",
+            abandoned_ids,
+            revoked_ids,
+            msg,
+        )
+    # 仅管理员手动清空需要协作取消；进程启动清理必须清掉取消位
+    if cooperative_cancel and (abandoned_ids or revoked_ids):
+        request_crawl_cancel(msg)
+    else:
+        clear_crawl_cancel()
+    return {
+        "abandoned": len(abandoned_ids),
+        "ids": abandoned_ids,
+        "revoked": revoked_ids,
+    }
 
 
 def _available() -> List[Dict[str, Any]]:
@@ -551,6 +650,9 @@ def _finish(
         run = session.get(CrawlRun, run_id)
         if run is None:
             return
+        # 前端 abandon 已写 aborted：勿被仍在收尾的旧任务覆盖
+        if run.status == "aborted":
+            return
         run.status = status
         run.finished_at = now_sh()
         run.error = (error or None)
@@ -569,6 +671,7 @@ def run_pipeline(trigger: str) -> Dict[str, Any]:
     if token is None:
         return {"status": "busy"}
     run_id: Optional[int] = None
+    clear_crawl_cancel()
     try:
         with session_scope() as session:
             cfg = _get_or_create(session)
@@ -588,6 +691,10 @@ def run_pipeline(trigger: str) -> Dict[str, Any]:
             payload.get("cluster"),
         )
         return payload
+    except CrawlAborted as exc:
+        if run_id is not None:
+            _finish(run_id, "aborted", str(exc))
+        return {"status": "aborted", "error": str(exc)}
     except Exception as exc:
         logger.exception("采集轮次失败")
         if run_id is not None:
@@ -703,6 +810,10 @@ async def _execute(
     pending: set[asyncio.Task] = set(task_map.keys())
 
     while pending:
+        if is_crawl_cancel_requested():
+            for task in pending:
+                task.cancel()
+            raise CrawlAborted("本轮已取消")
         done_set, pending = await asyncio.wait(
             pending, return_when=asyncio.FIRST_COMPLETED
         )
@@ -756,6 +867,11 @@ async def _execute(
                 )
                 continue
 
+            if is_crawl_cancel_requested():
+                for t in pending:
+                    t.cancel()
+                raise CrawlAborted("本轮已取消")
+
             _set_crawler(
                 name,
                 {
@@ -768,6 +884,8 @@ async def _execute(
             )
 
             def _crawler_progress(fields: Dict[str, Any], *, _key: str = name) -> None:
+                if is_crawl_cancel_requested():
+                    raise CrawlAborted("本轮已取消")
                 patch = {
                     "stage": fields.get("stage") or "filtering",
                     "label": fields.get("label") or "处理中",
@@ -816,6 +934,9 @@ async def _execute(
             }
         )
         return {"status": "failed", "error": f"全部爬虫失败：{summary}"}
+
+    if is_crawl_cancel_requested():
+        raise CrawlAborted("本轮已取消")
 
     _progress(
         {

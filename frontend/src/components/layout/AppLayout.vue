@@ -77,6 +77,7 @@ watch(
 .app-layout {
   display: grid;
   grid-template-rows: var(--header-h, 64px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -108,9 +109,9 @@ watch(
   padding-bottom: 16px;
 }
 .app-foot {
-  border-top: 1px solid var(--ink);
-  background: var(--pine);
-  color: rgba(245, 242, 233, 0.85);
+  border-top: 1px solid color-mix(in srgb, var(--moss) 55%, var(--pine));
+  background: color-mix(in srgb, var(--moss) 72%, var(--pine));
+  color: rgba(245, 242, 233, 0.9);
 }
 .foot-inner {
   display: flex;
