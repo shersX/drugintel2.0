@@ -31,7 +31,7 @@ async def summarize_one(
     *,
     content_max_chars: int = DEFAULT_CONTENT_MAX_CHARS,
 ) -> MutableMapping:
-    """为单条新闻写入 abstract 字段；失败时用 description 或正文截断兜底。"""
+    """为单条新闻写入 abstract；失败则标记 _summary_failed，不写伪摘要（避免污染向量）。"""
     title = str(item.get("title") or "")
     content = plain_full_text(item.get("full_text"))[:content_max_chars]
     system_prompt = _default_summary_prompt()
@@ -46,10 +46,11 @@ async def summarize_one(
         if not abstract:
             raise ValueError("摘要为空")
         item["abstract"] = abstract
+        item.pop("_summary_failed", None)
     except Exception as e:
-        fallback = (item.get("description") or content[:200] or title).strip()
-        item["abstract"] = fallback
-        logger.warning("摘要失败 title=%s 使用兜底: %s", title[:60], e)
+        item["_summary_failed"] = True
+        # 不写入 description/截断正文，避免后续 embedding 吃到劣质文本
+        logger.warning("摘要失败 title=%s 将标 failed 不嵌入: %s", title[:60], e)
     return item
 
 

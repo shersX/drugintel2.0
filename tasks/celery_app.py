@@ -100,3 +100,36 @@ def run_pipeline_intel(force: bool = False) -> dict:
     from backend.src.pipeline_intel.service import run_pipeline_sync
 
     return asyncio.run(run_pipeline_sync(force=force))
+
+
+@celery_app.task(
+    name="tasks.forecast_tasks.generate_event_forecast",
+    bind=True,
+    max_retries=20,
+)
+def generate_event_forecast(self, event_id: int) -> dict:
+    """异步生成事件研报；受 ANALYST_MAX_CONCURRENCY 限制。"""
+    import os
+
+    from sqlalchemy import func, select
+
+    from backend.src.agents.analyst import run_event_forecast_job
+    from backend.src.db.session import session_scope
+    from backend.src.models.event import Event
+
+    try:
+        limit = max(1, int(os.getenv("ANALYST_MAX_CONCURRENCY", "2")))
+    except ValueError:
+        limit = 2
+
+    with session_scope() as session:
+        running = session.scalar(
+            select(func.count())
+            .select_from(Event)
+            .where(Event.forecast_status == "running")
+        ) or 0
+        # 本任务尚未置 running；若已达上限则延后
+        if int(running) >= limit:
+            raise self.retry(countdown=15)
+
+    return run_event_forecast_job(int(event_id))

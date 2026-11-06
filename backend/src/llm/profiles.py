@@ -29,6 +29,7 @@ _KEY_ATTR = {
     "reranker": "reranker_api_key",
     "vision": "vision_api_key",
     "entity": "entity_api_key",
+    "analyst": "analyst_api_key",
 }
 _URL_ATTR = {
     "chat": "base_url",
@@ -37,6 +38,7 @@ _URL_ATTR = {
     "reranker": "reranker_base_url",
     "vision": "vision_base_url",
     "entity": "entity_base_url",
+    "analyst": "analyst_base_url",
 }
 
 
@@ -113,6 +115,13 @@ def _public(row: LlmProfile) -> Dict[str, Any]:
         "entity_model": row.entity_model or DEFAULT_ENTITY_MODEL,
         "has_entity_key": bool(row.entity_api_key),
         "entity_key_hint": _mask_key(open_secret(row.entity_api_key)),
+        "analyst_base_url": row.analyst_base_url or "",
+        "analyst_model": row.analyst_model or row.chat_model or DEFAULT_CHAT_MODEL,
+        "analyst_enable_thinking": bool(
+            getattr(row, "analyst_enable_thinking", True)
+        ),
+        "has_analyst_key": bool(row.analyst_api_key),
+        "analyst_key_hint": _mask_key(open_secret(row.analyst_api_key)),
         "is_active": row.is_active,
     }
 
@@ -130,6 +139,9 @@ def _defaults() -> Dict[str, Any]:
         "vision_model": "",
         "entity_base_url": DEFAULT_BASE_URL,
         "entity_model": DEFAULT_ENTITY_MODEL,
+        "analyst_base_url": DEFAULT_BASE_URL,
+        "analyst_model": DEFAULT_CHAT_MODEL,
+        "analyst_enable_thinking": True,
     }
 
 
@@ -164,12 +176,23 @@ def create_profile(
     entity_api_key: str = "",
     entity_base_url: str = "",
     entity_model: str = "",
+    analyst_api_key: str = "",
+    analyst_base_url: str = "",
+    analyst_model: str = "",
+    analyst_enable_thinking: bool = True,
 ) -> Dict[str, Any]:
     with session_scope() as session:
         v_url = _clean_url(vision_base_url) if (vision_base_url or "").strip() else ""
         e_url = _clean_url(entity_base_url) if (entity_base_url or "").strip() else _clean_url(base_url)
         e_model = (entity_model or "").strip() or DEFAULT_ENTITY_MODEL
         e_key = (entity_api_key or "").strip() or (api_key or "").strip()
+        a_url = (
+            _clean_url(analyst_base_url)
+            if (analyst_base_url or "").strip()
+            else _clean_url(base_url)
+        )
+        a_model = (analyst_model or "").strip() or (chat_model or "").strip() or DEFAULT_CHAT_MODEL
+        a_key = (analyst_api_key or "").strip() or (api_key or "").strip()
         row = LlmProfile(
             name=_require_text(name, "名称")[:100],
             api_key=seal(_require_text(api_key, "对话 API Key")),
@@ -188,6 +211,10 @@ def create_profile(
             entity_api_key=seal(e_key) if e_key else "",
             entity_base_url=e_url[:300],
             entity_model=e_model[:200],
+            analyst_api_key=seal(a_key) if a_key else "",
+            analyst_base_url=a_url[:300],
+            analyst_model=a_model[:200],
+            analyst_enable_thinking=bool(analyst_enable_thinking),
             is_active=False,
         )
         session.add(row)
@@ -224,6 +251,10 @@ def update_profile(
     entity_api_key: Optional[str] = None,
     entity_base_url: str = "",
     entity_model: str = "",
+    analyst_api_key: Optional[str] = None,
+    analyst_base_url: str = "",
+    analyst_model: str = "",
+    analyst_enable_thinking: bool = True,
     rebuild: bool = False,
 ) -> Dict[str, Any]:
     dim = _require_dim(embedding_dim)
@@ -255,6 +286,15 @@ def update_profile(
             row.entity_api_key = seal(entity_api_key.strip())
         elif not row.entity_api_key and row.api_key:
             row.entity_api_key = row.api_key
+        row.analyst_base_url = _clean_url(analyst_base_url or row.base_url or "")[:300]
+        row.analyst_model = (
+            (analyst_model or "").strip() or row.chat_model or DEFAULT_CHAT_MODEL
+        )[:200]
+        if (analyst_api_key or "").strip():
+            row.analyst_api_key = seal(analyst_api_key.strip())
+        elif not row.analyst_api_key and row.api_key:
+            row.analyst_api_key = row.api_key
+        row.analyst_enable_thinking = bool(analyst_enable_thinking)
         return _public(row)
 
 

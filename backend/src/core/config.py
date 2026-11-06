@@ -50,6 +50,12 @@ def _active_llm_profile() -> Optional[SimpleNamespace]:
                 entity_api_key=open_secret(getattr(row, "entity_api_key", "") or ""),
                 entity_base_url=(getattr(row, "entity_base_url", "") or "").strip().rstrip("/"),
                 entity_model=(getattr(row, "entity_model", "") or "").strip(),
+                analyst_api_key=open_secret(getattr(row, "analyst_api_key", "") or ""),
+                analyst_base_url=(getattr(row, "analyst_base_url", "") or "").strip().rstrip("/"),
+                analyst_model=(getattr(row, "analyst_model", "") or "").strip(),
+                analyst_enable_thinking=bool(
+                    getattr(row, "analyst_enable_thinking", True)
+                ),
             )
     except Exception as exc:
         logger.warning("读取启用中的模型配置失败，改用环境变量: %s", exc)
@@ -226,6 +232,48 @@ class EntityEnvConfig:
             model=row.entity_model or env.model,
             timeout_sec=env.timeout_sec,
             max_retries=env.max_retries,
+        )
+
+
+@dataclass(frozen=True)
+class AnalystEnvConfig:
+    """分析预判槽：研报 Agent / 事件摘要；空则回退对话槽。thinking 可由设置页配置（默认开）。"""
+
+    api_key: str
+    base_url: str
+    model: str
+    timeout_sec: float
+    max_retries: int
+    enable_thinking: bool
+
+    @staticmethod
+    def _from_env() -> "AnalystEnvConfig":
+        chat = LLMEnvConfig._from_env()
+        thinking_raw = os.getenv("ANALYST_ENABLE_THINKING", "true").strip().lower()
+        return AnalystEnvConfig(
+            api_key=_env_text("SILICONFLOW_ANALYST_API_KEY", chat.api_key),
+            base_url=_env_text("SILICONFLOW_ANALYST_BASE_URL", chat.base_url).rstrip("/"),
+            model=_env_text("SILICONFLOW_ANALYST_MODEL", chat.model),
+            timeout_sec=float(os.getenv("ANALYST_TIMEOUT_SEC", "240")),
+            max_retries=int(os.getenv("ANALYST_MAX_RETRIES", "2")),
+            enable_thinking=thinking_raw not in ("0", "false", "no", "off"),
+        )
+
+    @staticmethod
+    def load() -> "AnalystEnvConfig":
+        env = AnalystEnvConfig._from_env()
+        row = _active_llm_profile()
+        if row is None:
+            return env
+        return AnalystEnvConfig(
+            api_key=row.analyst_api_key or row.api_key or env.api_key,
+            base_url=row.analyst_base_url or row.base_url or env.base_url,
+            model=row.analyst_model or row.chat_model or env.model,
+            timeout_sec=env.timeout_sec,
+            max_retries=env.max_retries,
+            enable_thinking=bool(
+                getattr(row, "analyst_enable_thinking", env.enable_thinking)
+            ),
         )
 
 

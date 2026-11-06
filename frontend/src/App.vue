@@ -114,6 +114,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 盖在深色遮罩上，必须用不透明纸面，不能吃全局 .card 半透明 */
+  background: var(--paper);
 }
 .auth-dialog h2 {
   font-family: var(--font-serif);

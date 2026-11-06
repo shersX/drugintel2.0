@@ -29,4 +29,8 @@ class LlmProfile(Base):
     entity_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     entity_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     entity_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    analyst_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    analyst_base_url: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    analyst_model: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    analyst_enable_thinking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

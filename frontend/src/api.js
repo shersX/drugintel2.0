@@ -87,7 +87,10 @@ export const api = {
   },
   newsDetail: (id) => request(`/api/news/${id}`),
   events: (page = 1) => request(`/api/events?page=${page}&page_size=20`),
-  eventDetail: (id) => request(`/api/events/${id}`),
+  eventDetail: (id, { generateForecast = false } = {}) =>
+    request(`/api/events/${id}?generate_forecast=${generateForecast ? 'true' : 'false'}`),
+  eventForecast: (id, { force = true } = {}) =>
+    request(`/api/events/${id}/forecast?force=${force ? 'true' : 'false'}`, { method: 'POST' }),
   clusterRun: () => request('/api/cluster/run', { method: 'POST' }),
   clusterScore: () => request('/api/cluster/score', { method: 'POST' }),
   entities: (params = {}) => {
@@ -100,6 +103,19 @@ export const api = {
   createEntity: (body) => request('/api/entities', { method: 'POST', body: JSON.stringify(body) }),
   updateEntity: (id, body) => request(`/api/entities/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   mergeEntities: (body) => request('/api/entities/merge', { method: 'POST', body: JSON.stringify(body) }),
+  entityMergeCandidates: (params = {}) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+    })
+    return request(`/api/entities/merge-candidates?${q}`)
+  },
+  acceptEntityMergeCandidate: (id) =>
+    request(`/api/entities/merge-candidates/${id}/accept`, { method: 'POST' }),
+  rejectEntityMergeCandidate: (id) =>
+    request(`/api/entities/merge-candidates/${id}/reject`, { method: 'POST' }),
+  resolveEntityAliases: (body = {}) =>
+    request('/api/entities/resolve-aliases', { method: 'POST', body: JSON.stringify(body) }),
   importEntities: () => request('/api/entities/import-keywords', { method: 'POST' }),
   entityWatchlist: () => request('/api/entity-watchlist'),
   addEntityWatch: (entity_id) => request('/api/entity-watchlist', { method: 'POST', body: JSON.stringify({ entity_id }) }),

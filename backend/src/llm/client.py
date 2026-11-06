@@ -2,11 +2,11 @@
 
 import asyncio
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import aiohttp
 
-from backend.src.core.config import LLMEnvConfig
+from backend.src.core.config import AnalystEnvConfig, LLMEnvConfig
 from backend.src.core.logger import get_logger
 
 logger = get_logger("llm.client")
@@ -37,9 +37,22 @@ def is_non_retryable_transport_error(exc: BaseException) -> bool:
 class SiliconFlowClient:
     """调用 SiliconFlow `/v1/chat/completions`。"""
 
+    # Celery worker 每轮 asyncio.run 会新建 loop；类级 Semaphore 必须按 loop 重建，
+    # 否则 stop→restart 后出现 “bound to a different event loop”。
     _semaphore: Optional[asyncio.Semaphore] = None
+    _semaphore_loop: Optional[asyncio.AbstractEventLoop] = None
+    _max_concurrency: int = _DEFAULT_MAX_CONCURRENCY
 
-    def __init__(self,*,api_key: str,base_url: str,model: str,timeout_sec: float = 90.0,max_retries: int = 3,max_concurrency: int = _DEFAULT_MAX_CONCURRENCY):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        model: str,
+        timeout_sec: float = 90.0,
+        max_retries: int = 3,
+        max_concurrency: int = _DEFAULT_MAX_CONCURRENCY,
+    ):
         if not api_key:
             raise ValueError("SILICONFLOW_API_KEY 未设置，无法调用 LLM")
         self._api_key = api_key
@@ -47,8 +60,7 @@ class SiliconFlowClient:
         self._model = model
         self._timeout_sec = timeout_sec
         self._max_retries = max(1, max_retries)
-        if SiliconFlowClient._semaphore is None:
-            SiliconFlowClient._semaphore = asyncio.Semaphore(max(1, max_concurrency))
+        SiliconFlowClient._max_concurrency = max(1, max_concurrency)
 
     @classmethod
     def from_env(cls):
@@ -61,22 +73,48 @@ class SiliconFlowClient:
             max_retries=cfg.max_retries,
         )
 
+    @classmethod
+    def from_analyst_env(cls):
+        cfg = AnalystEnvConfig.load()
+        return cls(
+            api_key=cfg.api_key,
+            base_url=cfg.base_url,
+            model=cfg.model,
+            timeout_sec=cfg.timeout_sec,
+            max_retries=cfg.max_retries,
+        )
+
+    @classmethod
+    def _get_semaphore(cls) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        if cls._semaphore is None or cls._semaphore_loop is not loop:
+            cls._semaphore = asyncio.Semaphore(cls._max_concurrency)
+            cls._semaphore_loop = loop
+        return cls._semaphore
+
     async def chat_completion(
         self,
         messages: List[Dict[str, Any]],
         *,
         temperature: Optional[float] = None,
         enable_thinking: Optional[bool] = None,
+        tools: Optional[Sequence[Dict[str, Any]]] = None,
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+        return_message: bool = False,
     ):
-        """messages 的 content 可为字符串，或 OpenAI 多模态 content 数组。"""
-        assert self._semaphore is not None
-        async with self._semaphore:
-            return await self._chat_completion_unlocked(
+        """默认返回 content 字符串；return_message=True 时返回完整 assistant message。"""
+        async with self._get_semaphore():
+            msg = await self._chat_completion_unlocked(
                 messages,
                 stream=False,
                 temperature=temperature,
                 enable_thinking=enable_thinking,
+                tools=tools,
+                tool_choice=tool_choice,
             )
+            if return_message:
+                return msg
+            return (msg.get("content") or "").strip() if isinstance(msg, dict) else str(msg or "")
 
     async def chat_completion_stream(
         self,
@@ -85,8 +123,7 @@ class SiliconFlowClient:
         temperature: Optional[float] = None,
     ):
         """异步生成器：逐段产出 content delta。"""
-        assert self._semaphore is not None
-        async with self._semaphore:
+        async with self._get_semaphore():
             async for chunk in self._chat_completion_stream_unlocked(
                 messages, temperature=temperature
             ):
@@ -99,7 +136,9 @@ class SiliconFlowClient:
         stream: bool = False,
         temperature: Optional[float] = None,
         enable_thinking: Optional[bool] = None,
-    ):
+        tools: Optional[Sequence[Dict[str, Any]]] = None,
+        tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         url = f"{self._base_url}/chat/completions"
         payload: Dict[str, Any] = {
             "model": self._model,
@@ -108,9 +147,12 @@ class SiliconFlowClient:
         }
         if temperature is not None:
             payload["temperature"] = float(temperature)
-        # Qwen3 默认 thinking=true，实体抽取会慢到超时；仅显式传入时带上该字段
         if enable_thinking is not None:
             payload["enable_thinking"] = bool(enable_thinking)
+        if tools:
+            payload["tools"] = list(tools)
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -131,10 +173,19 @@ class SiliconFlowClient:
                 choices = data.get("choices") or []
                 if not choices:
                     logger.warning("LLM 响应无 choices: %s", str(data)[:300])
-                    return ""
+                    return {"role": "assistant", "content": ""}
                 msg = choices[0].get("message") or {}
                 content = msg.get("content")
-                return (content or "").strip()
+                if content is None and msg.get("reasoning_content"):
+                    # thinking 模型偶发只回 reasoning；正文仍优先 content
+                    content = ""
+                out = {
+                    "role": "assistant",
+                    "content": (content or "").strip() if isinstance(content, str) else content,
+                }
+                if msg.get("tool_calls"):
+                    out["tool_calls"] = msg["tool_calls"]
+                return out
             except aiohttp.ClientResponseError:
                 raise
             except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
@@ -149,14 +200,13 @@ class SiliconFlowClient:
                 if is_non_retryable_transport_error(e):
                     raise
                 if attempt < self._max_retries:
-                    # 原先 4^attempt 在第 2 次已达 16s，连接抖动时拖太久
                     await asyncio.sleep(min(8, 2 ** attempt))
                 else:
                     raise
 
         if last_exc:
             raise last_exc
-        return ""
+        return {"role": "assistant", "content": ""}
 
     async def _chat_completion_stream_unlocked(
         self,

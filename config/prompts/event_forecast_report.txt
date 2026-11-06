@@ -1,0 +1,2 @@
+（已废弃）请使用 analyst_event_forecast_clinical.txt / _deal.txt / _general.txt。
+Analyst Agent 按 report_mode 选择对应模板，并启用工具循环与 thinking。

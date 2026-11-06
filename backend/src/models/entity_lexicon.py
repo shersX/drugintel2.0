@@ -50,3 +50,39 @@ class EntityWatchlist(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class EntityMergeCandidate(Base):
+    """中英文等别名合并候选：pending 待审 / auto 已自动并 / accepted / rejected。"""
+
+    __tablename__ = "entity_merge_candidate"
+    __table_args__ = (
+        UniqueConstraint("left_id", "right_id", name="uq_entity_merge_pair"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    left_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("entity_lexicon.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    right_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("entity_lexicon.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    signals: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    llm_reason: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    preferred_keep_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("entity_lexicon.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

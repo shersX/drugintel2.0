@@ -170,6 +170,48 @@
           </div>
           <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('entity')">填入对话的地址与密钥</button>
         </article>
+
+        <article class="slot-card">
+          <div class="slot-head">
+            <div>
+              <h4>分析预判</h4>
+              <p>事件研报 Agent；别名裁判仍关闭 thinking</p>
+            </div>
+            <button type="button" class="secondary cfg-test" :disabled="busy" @click="testSlot('analyst')">
+              {{ testBusy === 'analyst' ? '…' : '测试' }}
+            </button>
+          </div>
+          <div class="field">
+            <label>模型</label>
+            <input v-model="editBuf.analyst_model" class="mono" type="text" placeholder="可与对话不同" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API 地址</label>
+            <input v-model="editBuf.analyst_base_url" class="mono" type="text" placeholder="https://…" :disabled="busy" />
+          </div>
+          <div class="field">
+            <label>API Key <span class="field-note">{{ keepFlags.analyst ? '已保存，留空不改' : '可继承对话密钥' }}</span></label>
+            <div class="key-row">
+              <input v-model="editBuf.analyst_api_key" class="mono" :type="showKey.analyst ? 'text' : 'password'" autocomplete="off" :placeholder="analystKeyPlaceholder" :disabled="busy" />
+              <button type="button" class="key-toggle" :disabled="busy" @click="showKey.analyst = !showKey.analyst">{{ showKey.analyst ? '隐藏' : '显示' }}</button>
+            </div>
+          </div>
+          <div class="field thinking-field">
+            <label>深度思考 Thinking</label>
+            <button
+              type="button"
+              class="thinking-toggle"
+              :class="{ on: editBuf.analyst_enable_thinking }"
+              :disabled="busy"
+              :aria-pressed="editBuf.analyst_enable_thinking"
+              @click="editBuf.analyst_enable_thinking = !editBuf.analyst_enable_thinking"
+            >
+              {{ editBuf.analyst_enable_thinking ? '已开启' : '已关闭' }}
+            </button>
+            <p class="meta field-hint">控制研报 / 事件摘要是否 enable_thinking；默认开启。别名合并裁判不受此开关影响。</p>
+          </div>
+          <button type="button" class="linkish" :disabled="busy" @click="copyChatInto('analyst')">填入对话的地址与密钥</button>
+        </article>
       </div>
 
       <div v-if="selectedDimMismatch || modelError || modelTestMsg" class="studio-foot">
@@ -409,18 +451,19 @@ const revision = ref(0)
 const editingId = ref(null)
 const selectedId = ref(null)
 const editBuf = reactive(blank())
-const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false, entity: false })
+const showKey = reactive({ chat: false, embedding: false, rerank: false, vision: false, entity: false, analyst: false })
 const keepFlags = reactive({
   chat: false,
   embedding: false,
   rerank: false,
   vision: false,
   entity: false,
+  analyst: false,
 })
 const modelError = ref('')
 const modelTestMsg = ref('')
 const modelTestErr = ref(false)
-const SLOT_LABEL = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉', entity: '实体抽取' }
+const SLOT_LABEL = { chat: '对话', embedding: '嵌入', rerank: '重排', vision: '视觉', entity: '实体抽取', analyst: '分析预判' }
 const testDialog = reactive({
   open: false,
   error: false,
@@ -493,6 +536,7 @@ const embedKeyPlaceholder = computed(() => (keepFlags.embedding ? '已保存，�
 const rerankKeyPlaceholder = computed(() => (keepFlags.rerank ? '已保存，留空不改' : 'sk-...'))
 const visionKeyPlaceholder = computed(() => (keepFlags.vision ? '已保存，留空不改' : '可选'))
 const entityKeyPlaceholder = computed(() => (keepFlags.entity ? '已保存，留空不改' : '可继承对话'))
+const analystKeyPlaceholder = computed(() => (keepFlags.analyst ? '已保存，留空不改' : '可继承对话'))
 const ragBm25Weight = computed(() => {
   const w = Number(ragForm.hybrid_vector_weight)
   if (!Number.isFinite(w)) return '—'
@@ -531,6 +575,10 @@ function blank() {
     entity_api_key: '',
     entity_base_url: 'https://api.siliconflow.cn/v1',
     entity_model: 'Qwen/Qwen3-8B',
+    analyst_api_key: '',
+    analyst_base_url: 'https://api.siliconflow.cn/v1',
+    analyst_model: 'deepseek-ai/DeepSeek-V4-Flash',
+    analyst_enable_thinking: true,
   }
 }
 
@@ -559,11 +607,16 @@ function fillEditBufFrom(source, { isNew = false } = {}) {
   editBuf.entity_api_key = ''
   editBuf.entity_base_url = source.entity_base_url || source.base_url || ''
   editBuf.entity_model = source.entity_model || 'Qwen/Qwen3-8B'
+  editBuf.analyst_api_key = ''
+  editBuf.analyst_base_url = source.analyst_base_url || source.base_url || ''
+  editBuf.analyst_model = source.analyst_model || source.chat_model || 'deepseek-ai/DeepSeek-V4-Flash'
+  editBuf.analyst_enable_thinking = source.analyst_enable_thinking !== false
   keepFlags.chat = !isNew && Boolean(source.has_chat_key)
   keepFlags.embedding = !isNew && Boolean(source.has_embedding_key)
   keepFlags.rerank = !isNew && Boolean(source.has_reranker_key)
   keepFlags.vision = !isNew && Boolean(source.has_vision_key)
   keepFlags.entity = !isNew && Boolean(source.has_entity_key)
+  keepFlags.analyst = !isNew && Boolean(source.has_analyst_key)
   rerankModel.value = editBuf.reranker_model || ''
 }
 
@@ -587,10 +640,14 @@ function buildPayload() {
     vision_model: editBuf.vision_model.trim(),
     entity_base_url: editBuf.entity_base_url.trim(),
     entity_model: editBuf.entity_model.trim() || 'Qwen/Qwen3-8B',
+    analyst_base_url: editBuf.analyst_base_url.trim(),
+    analyst_model: editBuf.analyst_model.trim(),
+    analyst_enable_thinking: Boolean(editBuf.analyst_enable_thinking),
     embedding_api_key: editBuf.embedding_api_key,
     reranker_api_key: editBuf.reranker_api_key,
     vision_api_key: editBuf.vision_api_key,
     entity_api_key: editBuf.entity_api_key,
+    analyst_api_key: editBuf.analyst_api_key,
   }
 }
 
@@ -617,6 +674,7 @@ const SLOT_FIELD = {
   rerank: { url: 'reranker_base_url', key: 'reranker_api_key' },
   vision: { url: 'vision_base_url', key: 'vision_api_key' },
   entity: { url: 'entity_base_url', key: 'entity_api_key' },
+  analyst: { url: 'analyst_base_url', key: 'analyst_api_key' },
 }
 
 function copyChatInto(slot) {
@@ -1257,7 +1315,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc))
   padding: 8px 10px;
   border: 1px solid var(--rule);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--paper) 70%, #fff);
+  background: var(--paper);
   font-size: var(--fs-sm);
 }
 .field input:disabled {
@@ -1266,7 +1324,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc))
   border-color: color-mix(in srgb, var(--rule) 80%, transparent);
 }
 .field :deep(.ui-select-trigger) {
-  background: color-mix(in srgb, var(--paper) 70%, #fff);
+  background: var(--paper);
 }
 .field :deep(.ui-select.disabled .ui-select-trigger) {
   background: color-mix(in srgb, var(--paper-deep) 72%, var(--wash));
@@ -1286,6 +1344,27 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc))
   padding: 0;
 }
 .linkish:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.thinking-field { gap: 8px; }
+.field-hint { margin: 4px 0 0; line-height: 1.45; }
+.thinking-toggle {
+  align-self: flex-start;
+  min-width: 88px;
+  border: 1px solid var(--rule, #d1d5db);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: var(--paper-deep);
+  color: var(--ink-mute, #6b7280);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.thinking-toggle.on {
+  background: color-mix(in srgb, var(--pine, #1f4d3a) 14%, var(--paper));
+  border-color: var(--pine, #1f4d3a);
+  color: var(--pine, #1f4d3a);
+}
+.thinking-toggle:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .adv {
   border: 1px dashed var(--rule);

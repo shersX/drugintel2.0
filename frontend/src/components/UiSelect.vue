@@ -90,7 +90,7 @@ onUnmounted(() => document.removeEventListener('click', onDoc))
   justify-content: space-between;
   gap: 8px;
   border: 1px solid var(--rule-strong);
-  background: var(--surface);
+  background: var(--paper);
   color: var(--ink);
   border-radius: var(--r-md);
   cursor: pointer;
@@ -129,7 +129,7 @@ onUnmounted(() => document.removeEventListener('click', onDoc))
   list-style: none;
   max-height: 220px;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-md);

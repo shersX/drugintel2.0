@@ -109,6 +109,10 @@ class LlmProfileWrite(BaseModel):
     entity_api_key: Optional[str] = None
     entity_base_url: str = ""
     entity_model: str = "Qwen/Qwen3-8B"
+    analyst_api_key: Optional[str] = None
+    analyst_base_url: str = ""
+    analyst_model: str = ""
+    analyst_enable_thinking: bool = True
     rebuild: bool = False
 
 
@@ -136,6 +140,11 @@ class EntityUpdate(BaseModel):
 class EntityMergeRequest(BaseModel):
     keep_id: int
     drop_id: int
+
+
+class EntityAliasResolveRequest(BaseModel):
+    limit: int = Field(50, ge=1, le=200)
+    use_embedding: bool = True
 
 
 class EntityWatchRequest(BaseModel):

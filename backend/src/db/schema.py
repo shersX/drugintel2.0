@@ -91,6 +91,10 @@ def _ensure_llm_profile_columns(engine) -> None:
             ("entity_base_url", "VARCHAR(300)"),
             ("entity_api_key", "TEXT"),
             ("entity_model", "VARCHAR(200)"),
+            ("analyst_base_url", "VARCHAR(300)"),
+            ("analyst_api_key", "TEXT"),
+            ("analyst_model", "VARCHAR(200)"),
+            ("analyst_enable_thinking", "BOOLEAN"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ADD COLUMN IF NOT EXISTS {name} {ddl}"))
         conn.execute(
@@ -184,6 +188,42 @@ def _ensure_llm_profile_columns(engine) -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET analyst_base_url = base_url
+                WHERE analyst_base_url IS NULL OR btrim(analyst_base_url) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET analyst_api_key = api_key
+                WHERE analyst_api_key IS NULL OR btrim(analyst_api_key) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET analyst_model = chat_model
+                WHERE analyst_model IS NULL OR btrim(analyst_model) = ''
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE llm_profile
+                SET analyst_enable_thinking = TRUE
+                WHERE analyst_enable_thinking IS NULL
+                """
+            )
+        )
         for name, default in (
             ("embedding_base_url", "''"),
             ("embedding_api_key", "''"),
@@ -195,9 +235,22 @@ def _ensure_llm_profile_columns(engine) -> None:
             ("entity_base_url", "''"),
             ("entity_api_key", "''"),
             ("entity_model", "'Qwen/Qwen3-8B'"),
+            ("analyst_base_url", "''"),
+            ("analyst_api_key", "''"),
+            ("analyst_model", "''"),
         ):
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET DEFAULT {default}"))
             conn.execute(text(f"ALTER TABLE llm_profile ALTER COLUMN {name} SET NOT NULL"))
+        conn.execute(
+            text(
+                "ALTER TABLE llm_profile ALTER COLUMN analyst_enable_thinking SET DEFAULT TRUE"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE llm_profile ALTER COLUMN analyst_enable_thinking SET NOT NULL"
+            )
+        )
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET DEFAULT 1024"))
         conn.execute(text("ALTER TABLE llm_profile ALTER COLUMN embedding_dim SET NOT NULL"))
 
@@ -226,6 +279,11 @@ def _ensure_entity_and_news_columns(engine) -> None:
             ("ci_risk_score", "DOUBLE PRECISION"),
             ("burst_prob", "DOUBLE PRECISION"),
             ("score_components", "JSONB"),
+            ("forecast_report", "TEXT"),
+            ("forecast_generated_at", "TIMESTAMPTZ"),
+            ("forecast_evidence_meta", "JSONB"),
+            ("forecast_status", "VARCHAR(16) NOT NULL DEFAULT 'idle'"),
+            ("forecast_error", "TEXT"),
         ):
             if conn.execute(text("SELECT to_regclass('public.event')")).scalar():
                 conn.execute(text(f"ALTER TABLE event ADD COLUMN IF NOT EXISTS {name} {ddl}"))
@@ -303,6 +361,7 @@ def _encrypt_llm_profile_keys() -> None:
                 "reranker_api_key",
                 "vision_api_key",
                 "entity_api_key",
+                "analyst_api_key",
             ):
                 value = getattr(row, attr) or ""
                 if value and not is_sealed(value):

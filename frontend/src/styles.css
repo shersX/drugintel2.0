@@ -290,7 +290,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
    ============================================================ */
 .card {
   position: relative;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--paper-deep) 55%, transparent);
   border: 1px solid var(--rule);
   border-radius: var(--r-lg);
   padding: clamp(18px, 2.4vw, 28px);
@@ -360,7 +360,7 @@ input, textarea, select {
   font-size: var(--fs-body);
   border-radius: var(--r-md);
   border: 1px solid var(--rule-strong);
-  background: var(--surface);
+  background: var(--paper);
   color: var(--ink);
   padding: 11px 14px;
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);

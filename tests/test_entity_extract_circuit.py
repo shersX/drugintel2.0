@@ -62,7 +62,9 @@ class EntityCircuitTests(unittest.TestCase):
             ),
             patch.object(extract_mod, "session_scope", _scope),
         ):
-            out = asyncio.run(extract_mod.extract_and_normalize_items(items))
+            out = asyncio.run(
+                extract_mod.extract_and_normalize_items(items, max_concurrency=1)
+            )
 
         self.assertEqual(len(out), 5)
         self.assertEqual(extract_one.await_count, 2)

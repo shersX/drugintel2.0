@@ -17,10 +17,15 @@
 ```text
 爬取 → 关键词过滤 → raw 入库
   → 相关性(对话模型) → 摘要(对话模型)
-  → 实体抽取(实体槽 Qwen3-8B) → alias 归一化 + entity_lexicon 回流
-  → 嵌入(嵌入槽) → news ready
-  → StreamingClusterer 增量/批处理 → event 汇总字段 + ci_risk_score
+  → 嵌入(嵌入槽) → news ready（情报目录可见）
+  → 实体抽取并发(实体槽 Qwen3-8B，enable_thinking=false) → alias 归一化回流
+  → StreamingClusterer → 事件级综合摘要 + ci_risk_score
+  →（抽屉按需）Analyst Agent 工具循环 → 异步 Celery 写 forecast_report
 ```
+
+说明：实体在 ready 之后，避免阻塞情报目录。研报走独立 **analyst 槽**（强制 thinking），与对话/实体槽分离；按 `story_type` 分支 `clinical_asset` / `deal_capital` / `general_intel`。`POST /forecast` 只入队，抽屉轮询；`ANALYST_MAX_CONCURRENCY` 默认 2。不做「新闻回写管线阶段」ETL。
+
+**别名智能合并**：共现 + CJK↔Latin 形态 + bge-m3 近邻（仅召回）→ 规则门 / LLM 裁判（analyst 客户端、thinking=false）；高置信自动 `merge`，中置信进设置「实体词典 → 待合并」。
 
 - 对话槽 / 嵌入槽 / 实体槽 **分离**（`llm_profile`）。  
 - 聚类强路径只认 **product（优先）/ drug**；**org / target / indication 不参与强并簇**，只服务展示与筛选。  
@@ -62,6 +67,9 @@
 | `ci_risk_score` | float | 情报风险分 [0,1] |
 | `burst_prob` | float nullable | 报道爆发概率（预留，趋势模型未默认 fit） |
 | `score_components` | JSONB | 可解释拆解 |
+| `forecast_report` | TEXT | 长文研报式推演（Markdown） |
+| `forecast_generated_at` | timestamptz | 推演生成时间 |
+| `forecast_evidence_meta` | JSONB | 证据包元数据（chain ids / gaps） |
 
 **`llm_profile`**
 
@@ -99,7 +107,9 @@ TRUNCATE news, event RESTART IDENTITY CASCADE;
 | `config/entity_seed.yaml` | 礼来/Lilly、Wegovy 等高优别名 |
 | `config/phase_pos_priors.yaml` | 阶段先验 + story_type 权重 |
 | `frontend/.../EntityLexiconPanel.vue` | 设置 → 实体词典 |
-| `frontend/src/views/Events.vue` | 事件簇列表 + 时间线抽屉 |
+| `frontend/src/views/Events.vue` | 事件簇扫描列表 + 右侧抽屉（摘要/研报推演/风险拆解/富时间线/事件链） |
+| `backend/src/scoring/event_brief.py` | 簇级综合摘要、证据包、`forecast_report` 生成 |
+| `config/prompts/event_cluster_summary.txt` / `event_forecast_report.txt` | 摘要与研报 prompt |
 | `docs/CLUSTERING_MIGRATION.md` | 迁移说明 + 后续优化 |
 | `docs/CI_SCORING_ROADMAP.md` | 评分边界 |
 | `docs/ENTITY_CLUSTERING_CHANGELOG.md` | **本文** |
@@ -114,7 +124,7 @@ TRUNCATE news, event RESTART IDENTITY CASCADE;
 | `backend/src/llm/profiles.py` | 创建/更新/公开字段含实体槽；`DEFAULT_ENTITY_MODEL` |
 | `backend/src/api/schemas.py` | `LlmProfileWrite` entity 字段；`EntityCreate/Update/Merge/Watch` |
 | `backend/src/api/app.py` | 新闻分面；事件详情；实体/关注 API；cluster/score；管线详情挂 `stage_prior` |
-| `backend/src/processors/pipeline.py` | `_enrich_items`：摘要后 NER |
+| `backend/src/processors/pipeline.py` | `_enrich_items`：向量→ready 后再并发 NER |
 | `backend/src/db/crud/news.py` | `update_news_enrichment` 写实体字段 |
 | `backend/src/clustering/service.py` | **替换**为 StreamingClusterer 落库 + `_aggregate_event_fields` |
 | `frontend/.../SystemConfigPanel.vue` | 「实体抽取」槽 UI |
@@ -164,12 +174,17 @@ TRUNCATE news, event RESTART IDENTITY CASCADE;
 |--------|------|------|------|
 | GET | `/api/news` | 可匿名 | 新增 query：`story_type,product,org,target,indication,watched_only`；item 含实体字段 |
 | GET | `/api/news/{id}` | 可匿名 | 含实体、`entity_raw`、`event{ci_risk_score,...}`、时间线 related |
-| GET | `/api/events` | 可匿名 | 按 `ci_risk_score` 降序 |
-| GET | `/api/events/{id}` | 可匿名 | `timeline[]` |
+| GET | `/api/events` | 可匿名 | 按 `ci_risk_score` 降序；簇级 summary |
+| GET | `/api/events/{id}` | 可匿名 | 富时间线、`entity_event_chain`、`forecast_report`、score_components |
+| POST | `/api/events/{id}/forecast` | login | 异步入队研报（返回 status）；抽屉轮询 |
+| GET | `/api/events/{id}` | 可匿名 | 含 `forecast_status` / `report_mode` |
 | POST | `/api/cluster/run` | admin | 跑 StreamingClusterer |
 | POST | `/api/cluster/score` | admin | 重算事件风险分 |
 | GET/POST/PATCH | `/api/entities`… | admin | 词典 CRUD |
 | POST | `/api/entities/merge` | admin | body: `keep_id,drop_id` |
+| GET | `/api/entities/merge-candidates` | admin | 别名合并待审列表 |
+| POST | `/api/entities/merge-candidates/{id}/accept\|reject` | admin | 确认/拒绝合并 |
+| POST | `/api/entities/resolve-aliases` | admin | 批跑智能合并 |
 | POST | `/api/entities/import-keywords` | admin | 重新种子 |
 | GET/POST/DELETE | `/api/entity-watchlist`… | login | 实体关注 |
 | GET | `/api/pipeline/assets/{id}` | login | 响应增 `stage_prior` |
@@ -220,7 +235,18 @@ ci_risk = 0.40*story_type_w + 0.35*volume + 0.25*entity
 
 ---
 
-## 11. 给后续 AI 的操作提示
+## 11. 事件研报推演边界（本轮）
+
+- **交互**：`/events` 列表只扫描；详情在**右侧抽屉**（研报优先 → 摘要 → 风险拆解 → 富时间线 → 同实体事件链）。
+- **Agent**：独立 analyst 槽 + 工具循环；研报 **thinking=true**；`POST /forecast` 异步入队，抽屉轮询 `forecast_status`。
+- **分支**：`clinical_asset` 可含「上市前景（弱推测）」；`deal_capital` / `general_intel` 不写获批叙事。
+- **证据**：Agent 自行拉取簇摘要/事件链等；不灌成员全文；公司战绩仅为弱聚合。
+- **管线**：只读软匹配；**不**从新闻 ETL 改 `current_stage`。
+- **语义**：`ci_risk_score` / 研报 = 情报关注与叙事推演，**非临床 LoA**。
+
+---
+
+## 12. 给后续 AI 的操作提示
 
 1. **改聚类阈值**：只动 `streaming.py` 的 `COS_HIGH`/`COS_MID` 与 `service.py` 调用；同步更新本文 §5。  
 2. **改 NER 字段**：同步 `extract.py` prompt、`news` 列、`update_news_enrichment`、前端芯片与 `/api/news` query。  
@@ -231,20 +257,25 @@ ci_risk = 0.40*story_type_w + 0.35*volume + 0.25*entity
 
 ---
 
-## 12. 验收清单（回归用）
+## 13. 验收清单（回归用）
 
 - [ ] 设置可保存/测试实体槽；默认模型名含 Qwen3-8B  
 - [ ] 「礼来」与「Lilly」经 aliases 归一为同一 org canonical  
 - [ ] 新闻详情有五类实体芯片 + story_type；列表可按实体筛  
 - [ ] Wegovy 与 CagriSema 不因共有 semaglutide 被强并（产品冲突）  
 - [ ] 无产品新闻走余弦三档  
-- [ ] `/events` 有风险分与时间线；管线详情有阶段先验 disclaimer  
+- [ ] ready 先于实体；实体并发有 `x/N` 日志（`ENTITY_MAX_CONCURRENCY`）  
+- [ ] `/events` 列表有簇级摘要与风险分；右侧抽屉可读长文研报并可重新生成  
+- [ ] 管线详情有阶段先验 disclaimer；研报文首非 LoA 声明  
 - [ ] `TRUNCATE news,event` 后空库可再跑采集链路；词典仍在  
 
 ---
 
-## 13. 修订记录
+## 14. 修订记录
 
 | 日期 | 说明 |
 |------|------|
 | 2026-04-01 | 首迁落地：实体+StreamingClusterer+CI 评分+文档；本 CHANGELOG 供 AI 读取 |
+| 2026-11-04 | ready→实体并发；事件级摘要；右侧抽屉研报推演与证据包边界 |
+| 2026-11-04 | 实体中英文智能合并：候选召回 + LLM 分档 + 设置页待审 |
+| 2026-11-04 | Analyst 槽 + 工具循环研报；Celery 异步；story_type 分支模板 |

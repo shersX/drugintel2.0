@@ -31,6 +31,17 @@ class Event(Base):
     ci_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     burst_prob: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     score_components: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    forecast_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    forecast_generated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    forecast_evidence_meta: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    forecast_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="idle"
+    )
+    forecast_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

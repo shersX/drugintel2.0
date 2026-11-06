@@ -246,6 +246,15 @@ def cluster_unassigned_in_session(session: Session) -> Dict[str, Any]:
             _aggregate_event_fields(session, event)
     session.flush()
 
+    # 簇级综合摘要（失败则保留代表篇 abstract）
+    try:
+        from backend.src.scoring.event_brief import refresh_summaries_for_events
+
+        n_sum = refresh_summaries_for_events(session, list(touched))
+        stats["event_summaries"] = n_sum
+    except Exception as exc:
+        logger.warning("事件综合摘要批次失败: %s", exc)
+
     logger.info("聚类完成 stats=%s", stats)
     try:
         from backend.src.monitor.health import record_cluster
@@ -258,6 +267,14 @@ def cluster_unassigned_in_session(session: Session) -> Dict[str, Any]:
 
 def run_clustering() -> Dict[str, Any]:
     with session_scope() as session:
+        # 聚类前先跑别名智能合并，使 product/org canonical 尽早对齐
+        try:
+            from backend.src.entities.alias_resolve import resolve_entity_aliases
+
+            alias_stats = resolve_entity_aliases(session, limit=50, use_embedding=True)
+            logger.info("聚类前别名解析: %s", alias_stats)
+        except Exception as exc:
+            logger.warning("聚类前别名解析跳过: %s", exc)
         return cluster_unassigned_in_session(session)
 
 

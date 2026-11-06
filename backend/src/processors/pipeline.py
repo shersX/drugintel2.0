@@ -85,7 +85,7 @@ async def _enrich_items(
     skip_embedding: bool = False,
     run_relevance: bool = True,
 ) -> Dict[str, Any]:
-    """相关性 → 摘要 → 向量 → 更新库状态。items 应已是 raw（或待补跑）。"""
+    """相关性 → 摘要 → 向量 → ready → 实体并发回写。items 应已是 raw（或待补跑）。"""
     stats: Dict[str, Any] = {"input": len(items)}
     if not items:
         return stats
@@ -128,26 +128,32 @@ async def _enrich_items(
                 (item.get("description") or plain_full_text(item.get("full_text"))[:200]),
             )
         summarized = list(work)
+        summary_failed: List[MutableMapping] = []
     else:
-        summarized = await summarize_items(work)
+        summarized_all = await summarize_items(work)
+        summarized = [i for i in summarized_all if not i.get("_summary_failed")]
+        summary_failed = [i for i in summarized_all if i.get("_summary_failed")]
     stats["after_summary"] = len(summarized)
-    _emit(progress, stage="summary", label="摘要完成", items_out=len(summarized))
+    stats["summary_failed"] = len(summary_failed)
+    _emit(
+        progress,
+        stage="summary",
+        label="摘要完成",
+        items_out=len(summarized),
+        detail=f"成功 {len(summarized)}，失败 {len(summary_failed)}",
+    )
 
-    _emit(progress, stage="entity", label="实体抽取", items_in=len(summarized))
-    try:
-        from backend.src.entities.extract import extract_and_normalize_items
+    if summary_failed:
+        with session_scope() as session:
+            stats["summary_failed_updated"] = update_news_enrichment(
+                session, summary_failed, status=PROCESS_FAILED
+            )
 
-        summarized = await extract_and_normalize_items(summarized)
-        stats["after_entity"] = len(summarized)
-    except Exception as exc:
-        logger.exception("实体抽取失败，继续向量化: %s", exc)
-        stats["entity_error"] = str(exc)
-        from backend.src.entities.extract import apply_empty_entities
+    if not summarized:
+        _emit(progress, stage="summary", label="摘要全部失败", items_out=0)
+        return stats
 
-        for item in summarized:
-            apply_empty_entities(item)
-    _emit(progress, stage="entity", label="实体完成", items_out=len(summarized))
-
+    # 先向量化并 ready，情报目录可立刻看见；实体抽在 ready 之后并发补齐
     _emit(progress, stage="embedding", label="生成向量", items_in=len(summarized))
     if skip_embedding:
         embedded = list(summarized)
@@ -157,6 +163,11 @@ async def _enrich_items(
     failed = [i for i in embedded if not i.get("embedding")]
     stats["after_embedding"] = len(ready)
     stats["embed_failed"] = len(failed)
+
+    from backend.src.entities.extract import apply_empty_entities
+
+    for item in ready:
+        apply_empty_entities(item)
 
     with session_scope() as session:
         if ready:
@@ -170,10 +181,50 @@ async def _enrich_items(
     _emit(
         progress,
         stage="embedding",
-        label="向量完成",
+        label="向量完成·新闻已上线",
         items_out=len(ready),
-        detail=f"ready {len(ready)}，failed {len(failed)}",
+        detail=f"ready {len(ready)}，failed {len(failed)}，summary_failed {len(summary_failed)}",
     )
+
+    if ready:
+        _emit(progress, stage="entity", label="实体抽取", items_in=len(ready), detail=f"0/{len(ready)}")
+
+        def _entity_progress(done: int, total: int) -> None:
+            _emit(
+                progress,
+                stage="entity",
+                label="实体抽取",
+                items_in=total,
+                items_out=done,
+                detail=f"{done}/{total}",
+            )
+
+        try:
+            from backend.src.entities.extract import extract_and_normalize_items
+
+            ready = await extract_and_normalize_items(
+                ready, progress_cb=_entity_progress
+            )
+            stats["after_entity"] = len(ready)
+            with session_scope() as session:
+                stats["entity_updated"] = update_news_enrichment(
+                    session, ready, status=PROCESS_READY
+                )
+        except Exception as exc:
+            logger.exception("实体抽取失败，保留空实体 ready: %s", exc)
+            stats["entity_error"] = str(exc)
+            for item in ready:
+                apply_empty_entities(item)
+        _emit(
+            progress,
+            stage="entity",
+            label="实体完成",
+            items_out=len(ready),
+            detail=f"{len(ready)}/{len(ready)}",
+        )
+    else:
+        stats["after_entity"] = 0
+
     return stats
 
 
@@ -209,7 +260,7 @@ async def run_processing_pipeline(
     reprocess_limit: int = REPROCESS_LIMIT,
 ) -> Dict[str, Any]:
     """
-    分阶段：关键词 → 有效性 → 去重 → raw 落库 →（先补跑积压）→ 相关性 → 摘要 → 向量 → ready。
+    分阶段：关键词 → 有效性 → 去重 → raw 落库 →（先补跑积压）→ 相关性 → 摘要 → 向量 → ready → 实体。
     """
     stats: Dict[str, Any] = {}
 
@@ -302,12 +353,14 @@ async def run_processing_pipeline(
                 )
             summarized = list(related)
         else:
-            summarized = await summarize_items(related)
+            summarized_all = await summarize_items(related)
+            summarized = [i for i in summarized_all if not i.get("_summary_failed")]
+            stats["summary_failed"] = len(summarized_all) - len(summarized)
         stats["after_summary"] = len(summarized)
         if skip_embedding:
             embedded = list(summarized)
         else:
-            embedded = await embed_items(summarized)
+            embedded = await embed_items(summarized) if summarized else []
         stats["after_embedding"] = sum(1 for i in embedded if i.get("embedding"))
         stats["inserted"] = 0
         logger.info("流水线完成(无落库) stats=%s", stats)

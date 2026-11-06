@@ -772,7 +772,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
 .mono { font-family: var(--font-mono); }
 
 .reg-card {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--paper-deep) 55%, transparent);
   border: 1px solid var(--rule);
   border-radius: var(--r-lg);
   min-width: 0;
@@ -886,12 +886,12 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
 .seg { display: flex; flex-wrap: wrap; gap: 8px; }
 .seg-btn { background: transparent; color: var(--pine); padding: 8px 14px; }
 .seg-btn.on {
-  background: color-mix(in srgb, var(--moss) 18%, var(--surface));
+  background: color-mix(in srgb, var(--moss) 18%, var(--paper));
   border-color: color-mix(in srgb, var(--moss) 55%, var(--pine));
   color: var(--pine);
 }
 .seg-btn.on:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--moss) 26%, var(--surface));
+  background: color-mix(in srgb, var(--moss) 26%, var(--paper));
   border-color: var(--moss);
   color: var(--pine);
   box-shadow: none;
@@ -932,19 +932,19 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
   height: 16px;
   border-radius: 4px;
   border: 1.5px solid var(--rule-strong);
-  background: var(--surface);
+  background: var(--paper);
   flex: none;
   position: relative;
 }
 .source-chip.on {
   border-color: color-mix(in srgb, var(--moss) 55%, var(--pine));
-  background: color-mix(in srgb, var(--moss) 18%, var(--surface));
+  background: color-mix(in srgb, var(--moss) 18%, var(--paper));
   color: var(--pine);
   font-weight: 700;
   box-shadow: none;
 }
 .source-chip.on:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--moss) 26%, var(--surface));
+  background: color-mix(in srgb, var(--moss) 26%, var(--paper));
   border-color: var(--moss);
   color: var(--pine);
   transform: none;
@@ -983,7 +983,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
 .drawer {
   width: min(420px, 100%);
   height: 100%;
-  background: var(--surface);
+  background: var(--paper);
   border-left: 1px solid var(--rule);
   box-shadow: var(--shadow-md);
   display: flex;
@@ -1049,7 +1049,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
   transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
 }
 .switch input:checked + .switch-ui {
-  background: color-mix(in srgb, var(--moss) 22%, var(--surface));
+  background: color-mix(in srgb, var(--moss) 22%, var(--paper));
   border-color: var(--moss);
 }
 .switch input:checked + .switch-ui::after {
@@ -1071,12 +1071,12 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape))
   height: 14px;
   border-radius: 3px;
   border: 1px solid var(--rule-strong);
-  background: var(--surface);
+  background: var(--paper);
 }
 .check-line input:checked + span::before {
   background: var(--pine);
   border-color: var(--pine);
-  box-shadow: inset 0 0 0 2px var(--surface);
+  box-shadow: inset 0 0 0 2px var(--paper);
 }
 
 .feedback-dialog {

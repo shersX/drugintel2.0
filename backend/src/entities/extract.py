@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
-from typing import Any, Dict, List, MutableMapping, Sequence
+from typing import Any, Callable, Dict, List, MutableMapping, Optional, Sequence
 
 from backend.src.core.config import EntityEnvConfig
 from backend.src.core.logger import get_logger
@@ -16,6 +18,7 @@ logger = get_logger("entities.extract")
 
 # 连续传输失败达到该阈值后，跳过本批剩余条目（空实体），避免卡死整轮
 _CIRCUIT_BREAK_AFTER = 2
+_DEFAULT_CONCURRENCY = 5
 
 STORY_TYPES = (
     "clinical",
@@ -28,6 +31,8 @@ STORY_TYPES = (
     "other",
 )
 
+ProgressCb = Optional[Callable[[int, int], None]]
+
 _SYSTEM = """你是医药竞争情报实体抽取助手。从新闻标题与摘要中抽取结构化实体，只输出 JSON，不要解释。
 字段：
 - products: 品牌药/管线代号列表（英文小写优先，如 wegovy、cagrisema）
@@ -39,15 +44,12 @@ _SYSTEM = """你是医药竞争情报实体抽取助手。从新闻标题与摘�
 无法判断的字段用空数组；story_type 无法判断用 other。"""
 
 
-def _client() -> SiliconFlowClient:
-    cfg = EntityEnvConfig.load()
-    return SiliconFlowClient(
-        api_key=cfg.api_key,
-        base_url=cfg.base_url,
-        model=cfg.model,
-        timeout_sec=cfg.timeout_sec,
-        max_retries=cfg.max_retries,
-    )
+def _max_concurrency() -> int:
+    raw = os.getenv("ENTITY_MAX_CONCURRENCY", str(_DEFAULT_CONCURRENCY))
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_CONCURRENCY
 
 
 def _parse_json(text: str) -> Dict[str, Any]:
@@ -117,6 +119,28 @@ def _crawl_cancel_requested() -> bool:
         return False
 
 
+def _apply_norm(item: MutableMapping, raw: Dict[str, Any]) -> None:
+    with session_scope() as session:
+        norm = normalize_and_feedback(
+            session,
+            products=raw.get("products") or [],
+            drugs=raw.get("drugs") or [],
+            orgs=raw.get("orgs") or [],
+            targets=raw.get("targets") or [],
+            indications=raw.get("indications") or [],
+        )
+    item["products"] = norm["products"]
+    item["drugs"] = norm["drugs"]
+    item["orgs"] = norm["orgs"]
+    item["targets"] = norm["targets"]
+    item["indications"] = norm["indications"]
+    item["entity_raw"] = {
+        **(norm.get("entity_raw") or {}),
+        "story_type": raw.get("story_type"),
+    }
+    item["story_type"] = raw.get("story_type") or "other"
+
+
 async def extract_one(title: str, abstract: str = "", content: str = "") -> Dict[str, Any]:
     body = f"标题: {title or ''}\n摘要: {abstract or ''}\n"
     snippet = (content or "")[:1200]
@@ -130,7 +154,6 @@ async def extract_one(title: str, abstract: str = "", content: str = "") -> Dict
         timeout_sec=cfg.timeout_sec,
         max_retries=cfg.max_retries,
     )
-    # Qwen3 默认开启 thinking，单条常 >30s；实体抽取关掉思考模式
     thinking = False if "qwen3" in (cfg.model or "").lower() else None
     resp = await client.chat_completion(
         [
@@ -160,10 +183,13 @@ async def extract_one(title: str, abstract: str = "", content: str = "") -> Dict
 
 async def extract_and_normalize_items(
     items: Sequence[MutableMapping],
+    *,
+    max_concurrency: Optional[int] = None,
+    progress_cb: ProgressCb = None,
 ) -> List[MutableMapping]:
-    """就地写入实体字段；词典回流在同一会话完成。
+    """就地写入实体字段；词典回流每条独立短事务。
 
-    传输类连续失败会断路跳过剩余条目；前端 abandon 会置取消位，本函数每条前检查。
+    默认并发抽取；连续失败断路；支持取消位与进度回调 (done, total)。
     """
     if not items:
         return []
@@ -174,59 +200,65 @@ async def extract_and_normalize_items(
             apply_empty_entities(item)
         return list(items)
 
-    consecutive_transport_failures = 0
+    total = len(items)
+    concurrency = max(1, int(max_concurrency or _max_concurrency()))
+    sem = asyncio.Semaphore(concurrency)
+    lock = asyncio.Lock()
+    fail_streak = 0
     skip_rest = False
+    done = 0
 
-    for index, item in enumerate(items):
-        if _crawl_cancel_requested():
-            logger.warning(
-                "实体抽取收到取消信号，跳过剩余 %s 条",
-                len(items) - index,
-            )
-            for rest in items[index:]:
-                apply_empty_entities(rest)
-            break
-
-        if skip_rest:
+    async def _work(index: int, item: MutableMapping) -> None:
+        nonlocal fail_streak, skip_rest, done
+        if _crawl_cancel_requested() or skip_rest:
             apply_empty_entities(item)
-            continue
+            async with lock:
+                done += 1
+                cur = done
+            if progress_cb:
+                try:
+                    progress_cb(cur, total)
+                except Exception:
+                    pass
+            return
 
-        title = str(item.get("title") or "")
-        abstract = str(item.get("abstract") or item.get("description") or "")
-        content = str(item.get("full_text") or item.get("content") or "")
-        try:
-            raw = await extract_one(title, abstract, content)
-            consecutive_transport_failures = 0
-        except Exception as exc:
-            logger.warning("实体抽取失败: %s", exc)
-            raw = _empty_raw()
-            consecutive_transport_failures += 1
-            if consecutive_transport_failures >= _CIRCUIT_BREAK_AFTER:
-                remaining = len(items) - index - 1
-                logger.error(
-                    "实体抽取连续失败 %s 次，跳过剩余 %s 条并继续流水线",
-                    consecutive_transport_failures,
-                    remaining,
-                )
-                skip_rest = True
+        async with sem:
+            if _crawl_cancel_requested() or skip_rest:
+                apply_empty_entities(item)
+            else:
+                title = str(item.get("title") or "")
+                abstract = str(item.get("abstract") or item.get("description") or "")
+                content = str(item.get("full_text") or item.get("content") or "")
+                try:
+                    raw = await extract_one(title, abstract, content)
+                    async with lock:
+                        fail_streak = 0
+                    _apply_norm(item, raw)
+                except Exception as exc:
+                    logger.warning("实体抽取失败 [%s/%s]: %s", index + 1, total, exc)
+                    apply_empty_entities(item)
+                    item["story_type"] = item.get("story_type") or "other"
+                    async with lock:
+                        fail_streak += 1
+                        if fail_streak >= _CIRCUIT_BREAK_AFTER and not skip_rest:
+                            skip_rest = True
+                            logger.error(
+                                "实体抽取连续失败 %s 次，跳过剩余条目并继续流水线",
+                                fail_streak,
+                            )
 
-        with session_scope() as session:
-            norm = normalize_and_feedback(
-                session,
-                products=raw.get("products") or [],
-                drugs=raw.get("drugs") or [],
-                orgs=raw.get("orgs") or [],
-                targets=raw.get("targets") or [],
-                indications=raw.get("indications") or [],
-            )
-        item["products"] = norm["products"]
-        item["drugs"] = norm["drugs"]
-        item["orgs"] = norm["orgs"]
-        item["targets"] = norm["targets"]
-        item["indications"] = norm["indications"]
-        item["entity_raw"] = {
-            **(norm.get("entity_raw") or {}),
-            "story_type": raw.get("story_type"),
-        }
-        item["story_type"] = raw.get("story_type") or "other"
+        async with lock:
+            done += 1
+            cur = done
+        if progress_cb:
+            try:
+                progress_cb(cur, total)
+            except Exception:
+                pass
+        elif cur == total or cur % max(1, min(5, concurrency)) == 0:
+            logger.info("实体抽取进度 %s/%s", cur, total)
+
+    await asyncio.gather(*[_work(i, item) for i, item in enumerate(items)])
+    if _crawl_cancel_requested():
+        logger.warning("实体抽取收到取消信号（批次结束）")
     return list(items)

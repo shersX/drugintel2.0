@@ -951,6 +951,7 @@ async def _execute(
             "label": "聚类中",
         }
     )
+    # run_clustering 内部会先 resolve_entity_aliases 再聚类
     cluster_stats = run_clustering()
     _progress(
         {

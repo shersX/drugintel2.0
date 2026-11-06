@@ -50,6 +50,7 @@ from backend.src.api.schemas import (
     ConversationRename,
     CrawlerSettingUpdate,
     CrawlStartRequest,
+    EntityAliasResolveRequest,
     EntityCreate,
     EntityMergeRequest,
     EntityUpdate,
@@ -533,47 +534,109 @@ def api_events(page: int = 1, page_size: int = 20):
 
 
 @app.get("/api/events/{event_id}")
-def api_event_detail(event_id: int):
+def api_event_detail(
+    event_id: int,
+    generate_forecast: bool = Query(False),
+):
     from backend.src.db.crud.news import news_ready_filter
+    from backend.src.scoring.event_brief import (
+        find_entity_event_chain,
+        synthesize_event_summary,
+    )
 
     with session_scope() as session:
         event = session.get(Event, event_id)
         if event is None:
             raise HTTPException(404, "event not found")
-        members = session.scalars(
-            select(News)
-            .where(News.event_id == event.id)
-            .where(news_ready_filter())
-            .order_by(News.publish_time.asc().nulls_last(), News.id.asc())
-        ).all()
-        return ok(
-            {
-                "id": event.id,
-                "title": event.title,
-                "summary": event.summary,
-                "news_count": event.news_count,
-                "products": event.products or [],
-                "orgs": event.orgs or [],
-                "story_types": event.story_types or [],
-                "status": event.status,
-                "ci_risk_score": event.ci_risk_score,
-                "burst_prob": event.burst_prob,
-                "score_components": event.score_components,
-                "disclaimer": "情报关注/风险评分，非药物临床成功概率",
-                "timeline": [
-                    {
-                        "id": m.id,
-                        "title": m.title,
-                        "publish_time": format_publish_time_cn(m.publish_time),
-                        "story_type": m.story_type,
-                        "products": m.products or [],
-                        "orgs": m.orgs or [],
-                        "is_representative": m.is_representative,
-                    }
-                    for m in members
-                ],
-            }
+        members = list(
+            session.scalars(
+                select(News)
+                .where(News.event_id == event.id)
+                .where(news_ready_filter())
+                .order_by(News.publish_time.asc().nulls_last(), News.id.asc())
+            ).all()
         )
+        if not (event.summary or "").strip() or len((event.summary or "").strip()) < 40:
+            try:
+                synthesize_event_summary(session, event)
+            except Exception:
+                logger.exception("详情页补写事件摘要失败 event=%s", event_id)
+
+        chain = find_entity_event_chain(session, event)
+        status = event.forecast_status or "idle"
+        forecast_error = event.forecast_error
+        meta = event.forecast_evidence_meta if isinstance(event.forecast_evidence_meta, dict) else {}
+        report_mode = meta.get("report_mode")
+        payload = {
+            "id": event.id,
+            "title": event.title,
+            "summary": event.summary,
+            "news_count": event.news_count,
+            "products": event.products or [],
+            "orgs": event.orgs or [],
+            "story_types": event.story_types or [],
+            "status": event.status,
+            "ci_risk_score": event.ci_risk_score,
+            "burst_prob": event.burst_prob,
+            "score_components": event.score_components,
+            "disclaimer": "情报关注/风险评分，非药物临床成功概率",
+            "entity_event_chain": chain,
+            "forecast_report": event.forecast_report,
+            "forecast_generated_at": (
+                event.forecast_generated_at.isoformat()
+                if event.forecast_generated_at
+                else None
+            ),
+            "forecast_evidence_meta": event.forecast_evidence_meta,
+            "forecast_status": status,
+            "forecast_error": forecast_error,
+            "report_mode": report_mode,
+            "timeline": [
+                {
+                    "id": m.id,
+                    "title": m.title,
+                    "abstract_snippet": ((m.abstract or "")[:220]),
+                    "publish_time": format_publish_time_cn(m.publish_time),
+                    "story_type": m.story_type,
+                    "products": m.products or [],
+                    "orgs": m.orgs or [],
+                    "is_representative": m.is_representative,
+                }
+                for m in members
+            ],
+        }
+
+    if generate_forecast and status not in ("queued", "running", "ready"):
+        try:
+            from backend.src.agents.analyst import enqueue_event_forecast
+
+            enq = enqueue_event_forecast(event_id, force=False)
+            payload["forecast_status"] = enq.get("status") or "queued"
+        except Exception as exc:
+            logger.warning("详情页触发研报入队失败 event=%s: %s", event_id, exc)
+            payload["forecast_error"] = str(exc)[:300]
+
+    return ok(payload)
+
+
+@app.post("/api/events/{event_id}/forecast")
+def api_event_forecast(
+    event_id: int,
+    force: bool = Query(True),
+    _actor: Actor = Depends(current_actor),
+):
+    """异步入队生成/刷新事件研报（秒回；抽屉轮询 status）。"""
+    from backend.src.agents.analyst import enqueue_event_forecast
+
+    with session_scope() as session:
+        event = session.get(Event, event_id)
+        if event is None:
+            raise HTTPException(404, "event not found")
+    try:
+        payload = enqueue_event_forecast(event_id, force=force)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"研报入队失败：{exc}") from exc
+    return ok(payload)
 
 
 @app.post("/api/cluster/run")
@@ -665,6 +728,84 @@ def api_entities_merge(body: EntityMergeRequest, actor: Actor = Depends(admin_ac
             detail=f"drop={body.drop_id}",
         )
         return ok(lex._public(row))
+
+
+@app.get("/api/entities/merge-candidates")
+def api_entity_merge_candidates(
+    status: Optional[str] = Query("pending"),
+    entity_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    _actor: Actor = Depends(admin_actor),
+):
+    from backend.src.entities.alias_resolve import list_merge_candidates
+
+    with session_scope() as session:
+        return ok(
+            list_merge_candidates(
+                session,
+                status=status,
+                entity_type=entity_type,
+                limit=page_size,
+                offset=(page - 1) * page_size,
+            )
+        )
+
+
+@app.post("/api/entities/merge-candidates/{candidate_id}/accept")
+def api_entity_merge_accept(candidate_id: int, actor: Actor = Depends(admin_actor)):
+    from backend.src.entities.alias_resolve import accept_merge_candidate
+
+    with session_scope() as session:
+        try:
+            payload = accept_merge_candidate(session, candidate_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        record_audit(
+            actor_id=actor.id,
+            action="entity_merge_accept",
+            target=f"merge_candidate:{candidate_id}",
+            detail=str(payload),
+        )
+        return ok(payload)
+
+
+@app.post("/api/entities/merge-candidates/{candidate_id}/reject")
+def api_entity_merge_reject(candidate_id: int, actor: Actor = Depends(admin_actor)):
+    from backend.src.entities.alias_resolve import reject_merge_candidate
+
+    with session_scope() as session:
+        try:
+            payload = reject_merge_candidate(session, candidate_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        record_audit(
+            actor_id=actor.id,
+            action="entity_merge_reject",
+            target=f"merge_candidate:{candidate_id}",
+        )
+        return ok(payload)
+
+
+@app.post("/api/entities/resolve-aliases")
+def api_entities_resolve_aliases(
+    body: Optional[EntityAliasResolveRequest] = None,
+    actor: Actor = Depends(admin_actor),
+):
+    from backend.src.entities.alias_resolve import resolve_entity_aliases
+
+    req = body or EntityAliasResolveRequest()
+    with session_scope() as session:
+        stats = resolve_entity_aliases(
+            session, limit=req.limit, use_embedding=req.use_embedding
+        )
+    record_audit(
+        actor_id=actor.id,
+        action="entity_resolve_aliases",
+        target="entity_lexicon",
+        detail=str(stats),
+    )
+    return ok(stats)
 
 
 @app.post("/api/entities/import-keywords")
@@ -1098,6 +1239,10 @@ def api_llm_profile_create(body: LlmProfileWrite, actor: Actor = Depends(admin_a
                 entity_api_key=body.entity_api_key or "",
                 entity_base_url=body.entity_base_url or "",
                 entity_model=body.entity_model or "",
+                analyst_api_key=body.analyst_api_key or "",
+                analyst_base_url=body.analyst_base_url or "",
+                analyst_model=body.analyst_model or "",
+                analyst_enable_thinking=body.analyst_enable_thinking,
             )
     except LlmProfileError as exc:
         raise _llm_http_error(exc) from exc
@@ -1158,6 +1303,10 @@ def api_llm_profile_update(profile_id: int, body: LlmProfileWrite, actor: Actor 
                 entity_api_key=body.entity_api_key,
                 entity_base_url=body.entity_base_url or "",
                 entity_model=body.entity_model or "",
+                analyst_api_key=body.analyst_api_key,
+                analyst_base_url=body.analyst_base_url or "",
+                analyst_model=body.analyst_model or "",
+                analyst_enable_thinking=body.analyst_enable_thinking,
                 rebuild=body.rebuild,
             )
     except LlmProfileError as exc:
